@@ -4,9 +4,9 @@ import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:wakelock/wakelock.dart';
-
-
+//import 'package:wakelock/wakelock.dart';
+import 'package:file_picker/file_picker.dart';
+//import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +22,8 @@ class SimpleNotesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Simple Notes',
       theme: ThemeData.light(), // Define a light theme if you need it
-      darkTheme: ThemeData( // Define the dark theme
+      darkTheme: ThemeData(
+        // Define the dark theme
         brightness: Brightness.dark,
         primaryColor: Colors.black,
         scaffoldBackgroundColor: Colors.grey[850], // Set the background to grey
@@ -61,6 +62,8 @@ class NotesListScreen extends StatefulWidget {
 
 class _NotesListScreenState extends State<NotesListScreen> {
   late Box notesBox;
+  // String defaultFolder = '';
+  // late SharedPreferences prefs;
 
   @override
   void initState() {
@@ -68,12 +71,49 @@ class _NotesListScreenState extends State<NotesListScreen> {
     notesBox = Hive.box('notesBox');
   }
 
+  // Future<void> _initializePreferences() async {
+  //   prefs = await SharedPreferences.getInstance();
+  //   String? storedFolder = prefs.getString('defaultFolder');
+  //
+  //   if (storedFolder == null) {
+  //     // If no folder is stored, use the app's documents directory
+  //     final directory = await getApplicationDocumentsDirectory();
+  //     defaultFolder = directory.path;
+  //     await prefs.setString('defaultFolder', defaultFolder);
+  //   } else {
+  //     defaultFolder = storedFolder;
+  //   }
+  //
+  //   setState(() {});
+  // }
+  //
+  // Future<void> _chooseFolder() async {
+  //   String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+  //   if (selectedDirectory != null) {
+  //     setState(() {
+  //       defaultFolder = selectedDirectory;
+  //     });
+  //     await prefs.setString('defaultFolder', defaultFolder);
+  //   }
+  // }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Simple Notes'),
       ),
+      // drawer: Drawer(
+      //   child: ListView(
+      //     padding: EdgeInsets.zero,
+      //     children: [
+      //       DrawerHeader(decoration: BoxDecoration(color: Colors.grey[900],),
+      //         child: Text('Menu', style: TextStyle(color: Colors.white, fontSize: 24,),),
+      //       ),
+      //       ListTile(leading: Icon(Icons.folder), title: Text('Set Default Folder'), subtitle: Text('Current: $defaultFolder'), onTap: _chooseFolder,),
+      //     ],
+      //   ),
+      // ),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
         builder: (context, Box box, _) {
@@ -95,7 +135,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
                   note,
                   style: Theme.of(context).textTheme.bodyLarge,
                   maxLines: 3, // Restrict to three rows
-                  overflow: TextOverflow.ellipsis, // Add ellipsis if text overflows
+                  overflow:
+                      TextOverflow.ellipsis, // Add ellipsis if text overflows
                 ),
                 onTap: () => Navigator.push(
                   context,
@@ -103,6 +144,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
                     builder: (context) => EditNoteScreen(
                       index: index,
                       note: note,
+                      //defaultFolder: defaultFolder,
                     ),
                   ),
                 ),
@@ -131,8 +173,9 @@ class _NotesListScreenState extends State<NotesListScreen> {
 }
 
 class EditNoteScreen extends StatefulWidget {
-  final int? index;// Make index nullable
+  final int? index; // Make index nullable
   final String? note;
+  //final String defaultFolder;
 
   EditNoteScreen({this.index, this.note});
 
@@ -147,12 +190,12 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.note);
-    Wakelock.enable(); // Enable wakelock when the screen is active
+    //Wakelock.enable(); // Enable wakelock when the screen is active
   }
 
   @override
   void dispose() {
-    Wakelock.disable(); // Disable wakelock when leaving the screen
+    //Wakelock.disable(); // Disable wakelock when leaving the screen
     _controller.dispose();
     super.dispose();
   }
@@ -160,7 +203,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   void _saveNote() {
     final notesBox = Hive.box('notesBox');
     if (widget.index != null) {
-      notesBox.putAt(widget.index!, _controller.text); // Add '!' to assert non-null
+      notesBox.putAt(
+          widget.index!, _controller.text); // Add '!' to assert non-null
     } else {
       notesBox.add(_controller.text);
     }
@@ -168,24 +212,28 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   }
 
   Future<void> _exportNote() async {
-    PermissionStatus status = await Permission.storage.request();
+    // Check if the permission is already granted
+    var status = await Permission.storage.status;
 
+    // If the permission is not granted, request for it
+    if (!status.isGranted) {
+      status = await Permission.storage.request();
+    }
+
+    // Proceed with exporting the note only if permission is granted
     if (status.isGranted) {
       final directory = await getExternalStorageDirectory();
       if (directory != null) {
         final path = directory.path;
         final file = File('$path/${DateTime.now().toIso8601String()}.txt');
         await file.writeAsString(_controller.text);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Note exported to ${file.path}')),);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Note exported to ${file.path}')),);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to access external storage')),);
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Storage permission is required to export notes')),
-      );
+        SnackBar(content: Text('Storage permission is required to export notes')),);
     }
   }
 
@@ -212,7 +260,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           maxLines: null,
           decoration: InputDecoration(
             border: OutlineInputBorder(),
-            labelText: 'Enter your note',
+            hintText: 'Enter your note',
           ),
           style: Theme.of(context).textTheme.bodyLarge,
         ),
