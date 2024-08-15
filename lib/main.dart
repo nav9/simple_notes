@@ -25,7 +25,7 @@ class SimpleNotesApp extends StatelessWidget {
       darkTheme: ThemeData( // Define the dark theme
         brightness: Brightness.dark,
         primaryColor: Colors.black,
-        scaffoldBackgroundColor: Colors.black,
+        scaffoldBackgroundColor: Colors.grey[850], // Set the background to grey
         appBarTheme: AppBarTheme(
           color: Colors.grey[900],
         ),
@@ -94,6 +94,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
                 title: Text(
                   note,
                   style: Theme.of(context).textTheme.bodyLarge,
+                  maxLines: 3, // Restrict to three rows
+                  overflow: TextOverflow.ellipsis, // Add ellipsis if text overflows
                 ),
                 onTap: () => Navigator.push(
                   context,
