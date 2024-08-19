@@ -62,8 +62,6 @@ class NotesListScreen extends StatefulWidget {
 
 class _NotesListScreenState extends State<NotesListScreen> {
   late Box notesBox;
-  // String defaultFolder = '';
-  // late SharedPreferences prefs;
 
   @override
   void initState() {
@@ -71,89 +69,52 @@ class _NotesListScreenState extends State<NotesListScreen> {
     notesBox = Hive.box('notesBox');
   }
 
-  // Future<void> _initializePreferences() async {
-  //   prefs = await SharedPreferences.getInstance();
-  //   String? storedFolder = prefs.getString('defaultFolder');
-  //
-  //   if (storedFolder == null) {
-  //     // If no folder is stored, use the app's documents directory
-  //     final directory = await getApplicationDocumentsDirectory();
-  //     defaultFolder = directory.path;
-  //     await prefs.setString('defaultFolder', defaultFolder);
-  //   } else {
-  //     defaultFolder = storedFolder;
-  //   }
-  //
-  //   setState(() {});
-  // }
-  //
-  // Future<void> _chooseFolder() async {
-  //   String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
-  //   if (selectedDirectory != null) {
-  //     setState(() {
-  //       defaultFolder = selectedDirectory;
-  //     });
-  //     await prefs.setString('defaultFolder', defaultFolder);
-  //   }
-  // }
+  void _deleteNoteConfirmation(Box theBox, int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete confirmation'),
+        content: Text('Are you sure you want to delete this note?'),
+        actions: [
+          TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('No'),),
+          TextButton(
+            onPressed: () {
+              setState(() {theBox.deleteAt(index);});
+              Navigator.of(context).pop();
+            },
+            child: Text('Yes'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Simple Notes'),
-      ),
-      // drawer: Drawer(
-      //   child: ListView(
-      //     padding: EdgeInsets.zero,
-      //     children: [
-      //       DrawerHeader(decoration: BoxDecoration(color: Colors.grey[900],),
-      //         child: Text('Menu', style: TextStyle(color: Colors.white, fontSize: 24,),),
-      //       ),
-      //       ListTile(leading: Icon(Icons.folder), title: Text('Set Default Folder'), subtitle: Text('Current: $defaultFolder'), onTap: _chooseFolder,),
-      //     ],
-      //   ),
-      // ),
+      appBar: AppBar(title: Text('Simple Notes'),),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
         builder: (context, Box box, _) {
-          if (box.values.isEmpty) {
-            return Center(
-              child: Text(
-                'No notes available. Add a new note!',
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-            );
-          }
+          if (box.values.isEmpty) {return Center(child: Text('No notes available. Add a new note!', style: Theme.of(context).textTheme.bodyLarge,),);}
 
           return ListView.builder(
             itemCount: box.length,
             itemBuilder: (context, index) {
               final note = box.getAt(index);
               return ListTile(
-                title: Text(
-                  note,
+                title: Text(note,
                   style: Theme.of(context).textTheme.bodyLarge,
                   maxLines: 3, // Restrict to three rows
-                  overflow:
-                      TextOverflow.ellipsis, // Add ellipsis if text overflows
+                  overflow: TextOverflow.ellipsis, // Add ellipsis if text overflows
                 ),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => EditNoteScreen(
-                      index: index,
-                      note: note,
-                      //defaultFolder: defaultFolder,
-                    ),
-                  ),
+                onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),
                 ),
-                trailing: IconButton(
-                  icon: Icon(Icons.delete),
-                  onPressed: () {
-                    box.deleteAt(index);
-                  },
-                ),
+                trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {
+                                                                              _deleteNoteConfirmation(box, index);
+                                                                              //box.deleteAt(index);
+                                                                              },),
               );
             },
           );
@@ -161,12 +122,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         child: Icon(Icons.add),
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => EditNoteScreen(),
-          ),
-        ),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),
       ),
     );
   }
@@ -202,12 +158,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   void _saveNote() {
     final notesBox = Hive.box('notesBox');
-    if (widget.index != null) {
-      notesBox.putAt(
-          widget.index!, _controller.text); // Add '!' to assert non-null
-    } else {
-      notesBox.add(_controller.text);
-    }
+    if (widget.index != null) {notesBox.putAt(widget.index!, _controller.text);}
+    else {notesBox.add(_controller.text);}
     Navigator.pop(context);
   }
 
@@ -216,9 +168,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     var status = await Permission.storage.status;
 
     // If the permission is not granted, request for it
-    if (!status.isGranted) {
-      status = await Permission.storage.request();
-    }
+    if (!status.isGranted) {status = await Permission.storage.request();}
 
     // Proceed with exporting the note only if permission is granted
     if (status.isGranted) {
@@ -228,13 +178,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         final file = File('$path/${DateTime.now().toIso8601String()}.txt');
         await file.writeAsString(_controller.text);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Note exported to ${file.path}')),);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to access external storage')),);
-      }
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Storage permission is required to export notes')),);
-    }
+      } else {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to access external storage')),);}
+    } else {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Storage permission is required to export notes')),);}
   }
 
   @override
@@ -243,28 +188,19 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       appBar: AppBar(
         title: Text('Edit Note'),
         actions: [
-          IconButton(
-            icon: Icon(Icons.save),
-            onPressed: _saveNote,
-          ),
-          IconButton(
-            icon: Icon(Icons.share),
-            onPressed: _exportNote,
-          ),
+          IconButton(icon: Icon(Icons.save), onPressed: _saveNote,),
+          IconButton(icon: Icon(Icons.share), onPressed: _exportNote,),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: TextField(
-          controller: _controller,
-          maxLines: null,
-          decoration: InputDecoration(
-            border: OutlineInputBorder(),
-            hintText: 'Enter your note',
-          ),
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
-      ),
+                    padding: const EdgeInsets.all(16.0),
+                    child: TextField(
+                                    controller: _controller,
+                                    maxLines: null,
+                                    decoration: InputDecoration(border: OutlineInputBorder(), hintText: 'Enter your note',),
+                                    style: Theme.of(context).textTheme.bodyLarge,
+                                  ),
+                  ),
     );
   }
 }
