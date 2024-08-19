@@ -4,9 +4,6 @@ import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-//import 'package:wakelock/wakelock.dart';
-import 'package:file_picker/file_picker.dart';
-//import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,33 +19,15 @@ class SimpleNotesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Simple Notes',
       theme: ThemeData.light(), // Define a light theme if you need it
-      darkTheme: ThemeData(
-        // Define the dark theme
-        brightness: Brightness.dark,
-        primaryColor: Colors.black,
-        scaffoldBackgroundColor: Colors.grey[850], // Set the background to grey
-        appBarTheme: AppBarTheme(
-          color: Colors.grey[900],
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: Colors.blueGrey,
-        ),
-        textTheme: TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Colors.white70),
-          labelLarge: TextStyle(color: Colors.white),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.grey[800],
-          border: OutlineInputBorder(),
-          labelStyle: TextStyle(color: Colors.white),
-        ),
-        listTileTheme: ListTileThemeData(
-          textColor: Colors.white,
-          iconColor: Colors.white,
-        ),
-      ),
+      darkTheme: ThemeData(brightness: Brightness.dark,
+                            primaryColor: Colors.black,
+                            scaffoldBackgroundColor: Colors.grey[850], // Set the background to grey
+                            appBarTheme: AppBarTheme(color: Colors.grey[900],),
+                            floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: Colors.blueGrey,),
+                            textTheme: TextTheme(bodyLarge: TextStyle(color: Colors.white), bodyMedium: TextStyle(color: Colors.white70), labelLarge: TextStyle(color: Colors.white),),
+                            inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: Colors.grey[800], border: OutlineInputBorder(), labelStyle: TextStyle(color: Colors.white),),
+                            listTileTheme: ListTileThemeData(textColor: Colors.white, iconColor: Colors.white,),
+                          ),
       themeMode: ThemeMode.dark, // Always use the dark theme
       home: NotesListScreen(),
     );
@@ -75,16 +54,9 @@ class _NotesListScreenState extends State<NotesListScreen> {
       builder: (context) => AlertDialog(
         title: Text('Delete confirmation'),
         content: Text('Are you sure you want to delete this note?'),
-        actions: [
-          TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('No'),),
-          TextButton(
-            onPressed: () {
-              setState(() {theBox.deleteAt(index);});
-              Navigator.of(context).pop();
-            },
-            child: Text('Yes'),
-          ),
-        ],
+        actions: [TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('No'),),
+                  TextButton(onPressed: () {setState(() {theBox.deleteAt(index);});Navigator.of(context).pop();}, child: Text('Yes'),),
+                 ],
       ),
     );
   }
@@ -103,27 +75,17 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemBuilder: (context, index) {
               final note = box.getAt(index);
               return ListTile(
-                title: Text(note,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  maxLines: 3, // Restrict to three rows
-                  overflow: TextOverflow.ellipsis, // Add ellipsis if text overflows
-                ),
-                onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),
-                ),
-                trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {
-                                                                              _deleteNoteConfirmation(box, index);
-                                                                              //box.deleteAt(index);
-                                                                              },),
+                title: Text(note, style: Theme.of(context).textTheme.bodyLarge, maxLines: 3, overflow: TextOverflow.ellipsis,),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
+                trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);},),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.add),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),
-      ),
+      floatingActionButton: FloatingActionButton(child: Icon(Icons.add),
+                                                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),
+                                                ),
     );
   }
 }
@@ -131,7 +93,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
 class EditNoteScreen extends StatefulWidget {
   final int? index; // Make index nullable
   final String? note;
-  //final String defaultFolder;
 
   EditNoteScreen({this.index, this.note});
 
@@ -146,12 +107,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.note);
-    //Wakelock.enable(); // Enable wakelock when the screen is active
   }
 
   @override
   void dispose() {
-    //Wakelock.disable(); // Disable wakelock when leaving the screen
     _controller.dispose();
     super.dispose();
   }
@@ -164,10 +123,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   }
 
   Future<void> _exportNote() async {
-    // Check if the permission is already granted
-    var status = await Permission.storage.status;
-
-    // If the permission is not granted, request for it
+    var status = await Permission.storage.status;// Check if the permission is already granted
     if (!status.isGranted) {status = await Permission.storage.request();}
 
     // Proceed with exporting the note only if permission is granted
@@ -187,19 +143,15 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Note'),
-        actions: [
-          IconButton(icon: Icon(Icons.save), onPressed: _saveNote,),
-          IconButton(icon: Icon(Icons.share), onPressed: _exportNote,),
-        ],
+        actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveNote,),
+                  IconButton(icon: Icon(Icons.share), onPressed: _exportNote,),],
       ),
-      body: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: TextField(
-                                    controller: _controller,
-                                    maxLines: null,
-                                    decoration: InputDecoration(border: OutlineInputBorder(), hintText: 'Enter your note',),
-                                    style: Theme.of(context).textTheme.bodyLarge,
-                                  ),
+      body: Padding(padding: const EdgeInsets.all(16.0),
+                    child: TextField(controller: _controller,
+                                     maxLines: null,
+                                     decoration: InputDecoration(border: OutlineInputBorder(), hintText: 'Enter your note',),
+                                     style: Theme.of(context).textTheme.bodyLarge,
+                                    ),
                   ),
     );
   }
