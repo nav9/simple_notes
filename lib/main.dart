@@ -53,7 +53,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete confirmation'),
-        content: Text('Are you sure you want to delete this note?'),
+        content: Text('The note will be deleted from this app but any files you exported will remain. Proceed with deletion of this note from this app?'),
         actions: [TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('No'),),
                   TextButton(onPressed: () {setState(() {theBox.deleteAt(index);});Navigator.of(context).pop();}, child: Text('Yes'),),
                  ],
@@ -64,7 +64,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Simple Notes'),),
+      appBar: AppBar(title: Text('Simple Notes', style: TextStyle(color: Colors.white70)),),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
         builder: (context, Box box, _) {
@@ -75,16 +75,16 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemBuilder: (context, index) {
               final note = box.getAt(index);
               return Card(child: ListTile(
-                title: Text(note, style: Theme.of(context).textTheme.bodyLarge, maxLines: 3, overflow: TextOverflow.ellipsis,),
+                title: Text(note, style: TextStyle(color: Colors.white24,), maxLines: 3, overflow: TextOverflow.ellipsis,),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
-                trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);},),
+                trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
               ),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(child: Icon(Icons.add),
+      floatingActionButton: FloatingActionButton(child: Icon(Icons.add, color: Colors.white, ),
                                                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),
                                                 ),
     );
@@ -141,19 +141,20 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    //Border info: https://stackoverflow.com/a/56488988
     OutlineInputBorder textBorder = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4)), borderSide: BorderSide(width: 1,color: Colors.black54),);
     return Scaffold(
       appBar: AppBar(
-        title: Text('Edit Note'),
+        title: Text('Edit Note', style: TextStyle(color: Colors.white24)),
         actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
-                  IconButton(icon: Icon(Icons.sd_storage), onPressed: _exportNote,),],
+                  IconButton(icon: Icon(Icons.sd_storage_outlined), onPressed: _exportNote,),],
       ),
       body: Padding(padding: const EdgeInsets.all(2.0),
                     child: TextField(controller: _controller,
                                      maxLines: null,
                                      decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder),
                                      keyboardAppearance: Brightness.dark,
-                                     style: Theme.of(context).textTheme.bodyLarge,
+                                     style: TextStyle(color: Colors.white70),
                                     ),
                   ),
     );
