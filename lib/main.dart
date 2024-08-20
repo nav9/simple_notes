@@ -68,7 +68,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
         builder: (context, Box box, _) {
-          if (box.values.isEmpty) {return Center(child: Text('No notes available. Add a new note!', style: Theme.of(context).textTheme.bodyLarge,),);}
+          if (box.values.isEmpty) {return Center(child: Text('Add a new note using the icon below', style: Theme.of(context).textTheme.bodyLarge,),);}
 
           return ListView.builder(
             itemCount: box.length,
