@@ -134,7 +134,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         final path = directory.path;
         final file = File('$path/${DateTime.now().toIso8601String()}.txt');
         await file.writeAsString(_controller.text);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Note exported to ${file.path}')),);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Note saved as text file at ${file.path}'), duration: Duration(milliseconds: 10000),),);
       } else {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to access external storage')),);}
     } else {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Storage permission is required to export notes')),);}
   }
@@ -144,8 +144,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Note'),
-        actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveNote,),
-                  IconButton(icon: Icon(Icons.share), onPressed: _exportNote,),],
+        actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
+                  IconButton(icon: Icon(Icons.sd_storage), onPressed: _exportNote,),],
       ),
       body: Padding(padding: const EdgeInsets.all(16.0),
                     child: TextField(controller: _controller,
