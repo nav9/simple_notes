@@ -141,16 +141,18 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   @override
   Widget build(BuildContext context) {
+    OutlineInputBorder textBorder = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4)), borderSide: BorderSide(width: 1,color: Colors.black54),);
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Note'),
         actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
                   IconButton(icon: Icon(Icons.sd_storage), onPressed: _exportNote,),],
       ),
-      body: Padding(padding: const EdgeInsets.all(16.0),
+      body: Padding(padding: const EdgeInsets.all(2.0),
                     child: TextField(controller: _controller,
                                      maxLines: null,
-                                     decoration: InputDecoration(border: OutlineInputBorder(), hintText: 'Enter your note',),
+                                     decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder),
+                                     keyboardAppearance: Brightness.dark,
                                      style: Theme.of(context).textTheme.bodyLarge,
                                     ),
                   ),
