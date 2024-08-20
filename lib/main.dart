@@ -74,10 +74,11 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemCount: box.length,
             itemBuilder: (context, index) {
               final note = box.getAt(index);
-              return ListTile(
+              return Card(child: ListTile(
                 title: Text(note, style: Theme.of(context).textTheme.bodyLarge, maxLines: 3, overflow: TextOverflow.ellipsis,),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
                 trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);},),
+              ),
               );
             },
           );
