@@ -75,7 +75,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemBuilder: (context, index) {
               final note = box.getAt(index);
               return Card(child: ListTile(
-                title: Text(note, style: TextStyle(color: Colors.white24,), maxLines: 3, overflow: TextOverflow.ellipsis,),
+                title: Text(note, style: TextStyle(color: Colors.white38,), maxLines: 3, overflow: TextOverflow.ellipsis,),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
                 trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
               ),
@@ -146,8 +146,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Note', style: TextStyle(color: Colors.white24)),
-        actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
-                  IconButton(icon: Icon(Icons.sd_storage_outlined), onPressed: _exportNote,),],
+        actions: [IconButton(icon: Icon(Icons.sd_storage_outlined), onPressed: _exportNote,),
+                  IconButton(icon: Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),],
       ),
       body: Padding(padding: const EdgeInsets.all(2.0),
                     child: TextField(controller: _controller,
