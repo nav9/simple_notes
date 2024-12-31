@@ -77,7 +77,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
               return Card(child: ListTile(
                 title: Text(note, style: TextStyle(color: Colors.white38,), maxLines: 3, overflow: TextOverflow.ellipsis,),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
-                trailing: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
+                leading: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
               ),
               );
             },
@@ -119,7 +119,20 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   void _saveNote() {
     final notesBox = Hive.box('notesBox');
     if (widget.index != null) {notesBox.putAt(widget.index!, _controller.text);}
-    else {notesBox.add(_controller.text);}
+    else {//Add the new note at the top of the list of notes
+      //Hive doesn't support inserting at a specific position, a better approach is to copy all existing notes into a new sequence with the new note at the beginning, then overwrite the box keys in sequence.
+      final tempList = [_controller.text]; // Start with the new note
+      tempList.addAll(notesBox.values.cast<String>()); // Add existing notes to the list
+
+      // Update each item in the box in the new order
+      for (int i = 0; i < tempList.length; i++) {
+        if (i < notesBox.length) {
+          notesBox.putAt(i, tempList[i]); // Update existing key
+        } else {
+          notesBox.add(tempList[i]); // Add new key if the box is shorter
+        }
+      }
+    }
     Navigator.pop(context);
   }
 
