@@ -23,10 +23,10 @@ class SimpleNotesApp extends StatelessWidget {
                             primaryColor: Colors.black,
                             scaffoldBackgroundColor: Colors.grey[850], // Set the background to grey
                             appBarTheme: AppBarTheme(color: Colors.grey[900],),
-                            floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: Colors.blueGrey,),
-                            textTheme: TextTheme(bodyLarge: TextStyle(color: Colors.white), bodyMedium: TextStyle(color: Colors.white70), labelLarge: TextStyle(color: Colors.white),),
+                            floatingActionButtonTheme: const FloatingActionButtonThemeData(backgroundColor: Colors.blueGrey,),
+                            textTheme: const TextTheme(bodyLarge: TextStyle(color: Colors.white), bodyMedium: TextStyle(color: Colors.white70), labelLarge: TextStyle(color: Colors.white),),
                             inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: Colors.grey[800], border: OutlineInputBorder(), labelStyle: TextStyle(color: Colors.white),),
-                            listTileTheme: ListTileThemeData(textColor: Colors.white, iconColor: Colors.white,),
+                            listTileTheme: const ListTileThemeData(textColor: Colors.white, iconColor: Colors.white,),
                           ),
       themeMode: ThemeMode.dark, // Always use the dark theme
       home: NotesListScreen(),
@@ -52,8 +52,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete confirmation'),
-        content: Text('The note will be deleted from this app but any files you exported will remain. Proceed with deletion of this note from this app?'),
+        title: const Text('Delete confirmation'),
+        content: const Text('The note will be deleted from this app but any files you exported will remain. Proceed with deletion of this note from this app?'),
         actions: [TextButton(onPressed: () {Navigator.of(context).pop();}, child: Text('No'),),
                   TextButton(onPressed: () {setState(() {theBox.deleteAt(index);});Navigator.of(context).pop();}, child: Text('Yes'),),
                  ],
@@ -64,7 +64,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Simple Notes', style: TextStyle(color: Colors.white70)),),
+      appBar: AppBar(title: const Text('Simple Notes', style: TextStyle(color: Colors.white70)),),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
         builder: (context, Box box, _) {
@@ -75,16 +75,16 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemBuilder: (context, index) {
               final note = box.getAt(index);
               return Card(child: ListTile(
-                title: Text(note, style: TextStyle(color: Colors.white38,), maxLines: 3, overflow: TextOverflow.ellipsis,),
+                title: Text(note, style: const TextStyle(color: Colors.white38,), maxLines: 3, overflow: TextOverflow.ellipsis,),
                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
-                leading: IconButton(icon: Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
+                leading: IconButton(icon: const Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
               ),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(child: Icon(Icons.add, color: Colors.white, ),
+      floatingActionButton: FloatingActionButton(child: const Icon(Icons.add, color: Colors.white, ),
                                                   onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),
                                                 ),
     );
@@ -148,8 +148,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         final file = File('$path/${DateTime.now().toIso8601String()}.txt');
         await file.writeAsString(_controller.text);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved at ${file.path}'), duration: Duration(milliseconds: 3000),),);
-      } else {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to access external storage')),);}
-    } else {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Storage permission is required to export notes')),);}
+      } else {ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to access external storage')),);}
+    } else {ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission is required to export notes')),);}
   }
 
   @override
@@ -158,16 +158,16 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     OutlineInputBorder textBorder = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4)), borderSide: BorderSide(width: 1,color: Colors.black54),);
     return Scaffold(
       appBar: AppBar(
-        title: Text('Edit Note', style: TextStyle(color: Colors.white24)),
-        actions: [IconButton(icon: Icon(Icons.sd_storage_outlined), onPressed: _exportNote,),
-                  IconButton(icon: Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),],
+        title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
+        actions: [IconButton(icon: const Icon(Icons.sd_storage_outlined), onPressed: _exportNote,),
+                  IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),],
       ),
       body: Padding(padding: const EdgeInsets.all(2.0),
                     child: TextField(controller: _controller,
                                      maxLines: null,
                                      decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder),
                                      keyboardAppearance: Brightness.dark,
-                                     style: TextStyle(color: Colors.white70),
+                                     style: const TextStyle(color: Colors.white70),
                                     ),
                   ),
     );
