@@ -78,70 +78,46 @@ class _NotesListScreenState extends State<NotesListScreen> {
               final note = notes[index];
               return Card(
                 child: ListTile(
-                  title: Text(
-                    note,
-                    style: const TextStyle(color: Colors.white38),
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => EditNoteScreen(
-                        index: index,
-                        note: note,
-                      ),
-                    ),
-                  ),
-                  leading: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () => _deleteNoteConfirmation(box, index),
-                    color: Colors.red[900],
-                  ),
+                  title: Text(note, style: const TextStyle(color: Colors.white38), maxLines: 3, overflow: TextOverflow.ellipsis,),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
+                  leading: IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteNoteConfirmation(box, index), color: Colors.red[900],),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                    Visibility(
-                    visible: index > 0, // Show only if it's not the first item
-                    child: IconButton(
-                        icon: Icon(Icons.move_up, color: Colors.grey[700], size: 20),
-                        onPressed: index > 0
-                            ? () {
-                          setState(() {
-                            // Swap notes in the list
-                            final temp = notes[index];
-                            notes[index] = notes[index - 1];
-                            notes[index - 1] = temp;
-
-                            // Update Hive box
-                            box.putAt(index, notes[index]);
-                            box.putAt(index - 1, notes[index - 1]);
-                          });
-                        }
-                            : null, // Disable if it's the first item
+                      Visibility(
+                      visible: index > 0, // Show only if it's not the first item
+                      child: IconButton(
+                          icon: Icon(Icons.move_up, color: Colors.grey[700], size: 20),
+                          onPressed: index > 0 ? () {
+                            setState(() {
+                              // Swap notes in the list
+                              final temp = notes[index];
+                              notes[index] = notes[index - 1];
+                              notes[index - 1] = temp;
+                              // Update Hive box
+                              box.putAt(index, notes[index]);
+                              box.putAt(index - 1, notes[index - 1]);
+                            });
+                          } : null, // Disable if it's the first item
+                        ),
                       ),
-                    ),
                       const SizedBox(width: 0),//space between the up and down icons
-                  Visibility(
-                    visible: index < notes.length - 1, // Show only if it's not the last item
-                    child: IconButton(
-                        icon: Icon(Icons.move_down, color: Colors.grey[700], size: 20),
-                        onPressed: index < notes.length - 1
-                            ? () {
-                          setState(() {
-                            // Swap notes in the list
-                            final temp = notes[index];
-                            notes[index] = notes[index + 1];
-                            notes[index + 1] = temp;
-
-                            // Update Hive box
-                            box.putAt(index, notes[index]);
-                            box.putAt(index + 1, notes[index + 1]);
-                          });
-                        }
-                            : null, // Disable if it's the last item
+                      Visibility(
+                        visible: index < notes.length - 1, // Show only if it's not the last item
+                        child: IconButton(icon: Icon(Icons.move_down, color: Colors.grey[700], size: 20),
+                            onPressed: index < notes.length - 1 ? () {
+                              setState(() {
+                                // Swap notes in the list
+                                final temp = notes[index];
+                                notes[index] = notes[index + 1];
+                                notes[index + 1] = temp;
+                                // Update Hive box
+                                box.putAt(index, notes[index]);
+                                box.putAt(index + 1, notes[index + 1]);
+                              });
+                            } : null, // Disable if it's the last item
+                          ),
                       ),
-                  ),
                     ],
                   ),
                 ),
@@ -150,9 +126,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(child: const Icon(Icons.add, color: Colors.white, ),
-                                                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),
-                                                ),
+      floatingActionButton: FloatingActionButton(child: const Icon(Icons.add, color: Colors.white, ), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(),),),),
     );
   }
 }
@@ -192,11 +166,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
       // Update each item in the box in the new order
       for (int i = 0; i < tempList.length; i++) {
-        if (i < notesBox.length) {
-          notesBox.putAt(i, tempList[i]); // Update existing key
-        } else {
-          notesBox.add(tempList[i]); // Add new key if the box is shorter
-        }
+        if (i < notesBox.length) {notesBox.putAt(i, tempList[i]);}// Update existing key
+        else {notesBox.add(tempList[i]);}// Add new key if the box is shorter
       }
     }
     Navigator.pop(context);
