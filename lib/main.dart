@@ -101,8 +101,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: Icon(Icons.move_up, color: Colors.grey[200], size: 20),
+                    Visibility(
+                    visible: index > 0, // Show only if it's not the first item
+                    child: IconButton(
+                        icon: Icon(Icons.move_up, color: Colors.grey[700], size: 20),
                         onPressed: index > 0
                             ? () {
                           setState(() {
@@ -118,9 +120,12 @@ class _NotesListScreenState extends State<NotesListScreen> {
                         }
                             : null, // Disable if it's the first item
                       ),
+                    ),
                       const SizedBox(width: 0),//space between the up and down icons
-                      IconButton(
-                        icon: Icon(Icons.move_down, color: Colors.grey[200], size: 20),
+                  Visibility(
+                    visible: index < notes.length - 1, // Show only if it's not the last item
+                    child: IconButton(
+                        icon: Icon(Icons.move_down, color: Colors.grey[700], size: 20),
                         onPressed: index < notes.length - 1
                             ? () {
                           setState(() {
@@ -136,6 +141,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
                         }
                             : null, // Disable if it's the last item
                       ),
+                  ),
                     ],
                   ),
                 ),
