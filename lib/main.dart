@@ -131,18 +131,26 @@ class _NotesListScreenState extends State<NotesListScreen> {
   }
 }
 
+
+
+
+
+
 class EditNoteScreen extends StatefulWidget {
   final int? index; // Make index nullable
   final String? note;
 
-  EditNoteScreen({this.index, this.note});
-
+  EditNoteScreen({this.index, this.note}); // Add index here
   @override
   _EditNoteScreenState createState() => _EditNoteScreenState();
 }
 
+
 class _EditNoteScreenState extends State<EditNoteScreen> {
   late TextEditingController _controller;
+  bool _isBold = false;
+  bool _isItalic = false;
+  bool _isUnderline = false;
 
   @override
   void initState() {
@@ -150,63 +158,84 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     _controller = TextEditingController(text: widget.note);
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  TextStyle _getTextStyle() {
+    return TextStyle(
+      fontWeight: _isBold ? FontWeight.bold : FontWeight.normal,
+      fontStyle: _isItalic ? FontStyle.italic : FontStyle.normal,
+      decoration: _isUnderline ? TextDecoration.underline : TextDecoration.none,
+    );
   }
 
   void _saveNote() {
     final notesBox = Hive.box('notesBox');
-    if (widget.index != null) {notesBox.putAt(widget.index!, _controller.text);}
-    else {//Add the new note at the top of the list of notes
-      //Hive doesn't support inserting at a specific position, a better approach is to copy all existing notes into a new sequence with the new note at the beginning, then overwrite the box keys in sequence.
-      final tempList = [_controller.text]; // Start with the new note
-      tempList.addAll(notesBox.values.cast<String>()); // Add existing notes to the list
-
-      // Update each item in the box in the new order
-      for (int i = 0; i < tempList.length; i++) {
-        if (i < notesBox.length) {notesBox.putAt(i, tempList[i]);}// Update existing key
-        else {notesBox.add(tempList[i]);}// Add new key if the box is shorter
-      }
+    if (widget.index != null) {
+      // Update the existing note
+      notesBox.putAt(widget.index!, _controller.text);
+    } else {
+      // Add a new note
+      notesBox.add(_controller.text);
     }
     Navigator.pop(context);
   }
 
-  Future<void> _exportNote() async {
-    var status = await Permission.storage.status;// Check if the permission is already granted
-    if (!status.isGranted) {status = await Permission.storage.request();}
-
-    // Proceed with exporting the note only if permission is granted
-    if (status.isGranted) {
-      final directory = await getExternalStorageDirectory();
-      if (directory != null) {
-        final path = directory.path;
-        final file = File('$path/${DateTime.now().toIso8601String()}.txt');
-        await file.writeAsString(_controller.text);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved at ${file.path}'), duration: Duration(milliseconds: 3000),),);
-      } else {ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to access external storage')),);}
-    } else {ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission is required to export notes')),);}
-  }
 
   @override
   Widget build(BuildContext context) {
-    //Border info: https://stackoverflow.com/a/56488988
-    OutlineInputBorder textBorder = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4)), borderSide: BorderSide(width: 1,color: Colors.black54),);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
-        actions: [IconButton(icon: const Icon(Icons.sd_storage_outlined), onPressed: _exportNote,),
-                  IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),],
+        title: const Text('Edit Note'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: () {
+              _saveNote();
+              Navigator.pop(context, _controller.text);
+            },
+          ),
+        ],
       ),
-      body: Padding(padding: const EdgeInsets.all(2.0),
-                    child: TextField(controller: _controller,
-                                     maxLines: null,
-                                     decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder),
-                                     keyboardAppearance: Brightness.dark,
-                                     style: const TextStyle(color: Colors.white70),
-                                    ),
-                  ),
+      body: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.format_bold,
+                  color: _isBold ? Colors.blue : Colors.grey,
+                ),
+                onPressed: () => setState(() => _isBold = !_isBold),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.format_italic,
+                  color: _isItalic ? Colors.blue : Colors.grey,
+                ),
+                onPressed: () => setState(() => _isItalic = !_isItalic),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.format_underline,
+                  color: _isUnderline ? Colors.blue : Colors.grey,
+                ),
+                onPressed: () => setState(() => _isUnderline = !_isUnderline),
+              ),
+            ],
+          ),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              maxLines: null,
+              decoration: const InputDecoration(
+                hintText: 'Enter your note',
+                border: OutlineInputBorder(),
+              ),
+              style: _getTextStyle(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
+
