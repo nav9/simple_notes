@@ -70,15 +70,75 @@ class _NotesListScreenState extends State<NotesListScreen> {
         builder: (context, Box box, _) {
           if (box.values.isEmpty) {return Center(child: Text('Add a new note using the icon below', style: Theme.of(context).textTheme.bodyLarge,),);}
 
+          // Extract notes from the box
+          final notes = box.values.toList().cast<String>();
           return ListView.builder(
-            itemCount: box.length,
+            itemCount: notes.length,
             itemBuilder: (context, index) {
-              final note = box.getAt(index);
-              return Card(child: ListTile(
-                title: Text(note, style: const TextStyle(color: Colors.white38,), maxLines: 3, overflow: TextOverflow.ellipsis,),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: note,),),),
-                leading: IconButton(icon: const Icon(Icons.delete), onPressed: () {_deleteNoteConfirmation(box, index);}, color: Colors.red[900]),
-              ),
+              final note = notes[index];
+              return Card(
+                child: ListTile(
+                  title: Text(
+                    note,
+                    style: const TextStyle(color: Colors.white38),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => EditNoteScreen(
+                        index: index,
+                        note: note,
+                      ),
+                    ),
+                  ),
+                  leading: IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () => _deleteNoteConfirmation(box, index),
+                    color: Colors.red[900],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.move_up, color: Colors.grey[200], size: 20),
+                        onPressed: index > 0
+                            ? () {
+                          setState(() {
+                            // Swap notes in the list
+                            final temp = notes[index];
+                            notes[index] = notes[index - 1];
+                            notes[index - 1] = temp;
+
+                            // Update Hive box
+                            box.putAt(index, notes[index]);
+                            box.putAt(index - 1, notes[index - 1]);
+                          });
+                        }
+                            : null, // Disable if it's the first item
+                      ),
+                      const SizedBox(width: 0),//space between the up and down icons
+                      IconButton(
+                        icon: Icon(Icons.move_down, color: Colors.grey[200], size: 20),
+                        onPressed: index < notes.length - 1
+                            ? () {
+                          setState(() {
+                            // Swap notes in the list
+                            final temp = notes[index];
+                            notes[index] = notes[index + 1];
+                            notes[index + 1] = temp;
+
+                            // Update Hive box
+                            box.putAt(index, notes[index]);
+                            box.putAt(index + 1, notes[index + 1]);
+                          });
+                        }
+                            : null, // Disable if it's the last item
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
           );
