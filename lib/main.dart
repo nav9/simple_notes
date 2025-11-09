@@ -5,36 +5,36 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
-import 'package:universal_io/io.dart'; // Used for Platform detection
-import 'package:path/path.dart' as p; // Used for getting the basename of a file
-import 'session_manager.dart'; // Make sure you have this file as defined previously
+import 'package:universal_io/io.dart';
+import 'package:path/path.dart' as p;
+import 'session_manager.dart'; // Ensure this file exists in lib/
 
 // --- SERVICES (Encryption) ---
 
 class EncryptionService {
-  // A static IV is used for simplicity. In a production app, generate and store a unique IV per encryption.
-  static final iv = encrypt.IV.fromLength(16);
+  // FIX: Use a fixed, non-random IV.
+  // Using a random IV on each app start (IV.fromLength(16)) was causing the decryption to fail after a restart.
+  // The IV must be the same for both encryption and decryption.
+  // NOTE: For production-grade security, a unique IV should be generated per-encryption and stored alongside the ciphertext.
+  // For simplicity in this app, we use a single, hardcoded IV.
+  static final iv = encrypt.IV.fromBase64('AAAAAAAAAAAAAAAAAAAAAA=='); // A fixed 16-byte zero IV
 
   static String encryptText(String text, String password) {
-    // Pad the key to ensure it's 32 bytes for AES-256.
     final key = encrypt.Key.fromUtf8(password.padRight(32, '\0'));
     final encrypter = encrypt.Encrypter(encrypt.AES(key));
     final encrypted = encrypter.encrypt(text, iv: iv);
-    // Prepend a marker to easily identify encrypted content.
     return "[ENCRYPTED]" + encrypted.base64;
   }
 
   static String? decryptText(String encryptedText, String password) {
-    // Check for the marker. If not present, it's not our encrypted format.
     if (!encryptedText.startsWith("[ENCRYPTED]")) return null;
     try {
       final key = encrypt.Key.fromUtf8(password.padRight(32, '\0'));
       final encrypter = encrypt.Encrypter(encrypt.AES(key));
-      // Remove the marker before decrypting.
       final decrypted = encrypter.decrypt64(encryptedText.substring(11), iv: iv);
       return decrypted;
     } catch (e) {
-      // If decryption fails (e.g., wrong password), return null.
+      // This will catch errors from wrong passwords or corrupted data.
       return null;
     }
   }
@@ -46,7 +46,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final appDocumentDir = await getApplicationDocumentsDirectory();
   Hive.init(appDocumentDir.path);
-  // Using a Box<Map> allows for storing structured note data.
   await Hive.openBox<Map>('notesBox');
   runApp(SimpleNotesApp());
 }
@@ -84,7 +83,6 @@ class NotesListScreen extends StatefulWidget {
 
 class _NotesListScreenState extends State<NotesListScreen> {
   late Box<Map> notesBox;
-  // Cache to hold decrypted notes for the current session.
   final Map<int, String> _decryptedNotesCache = {};
 
   @override
@@ -96,17 +94,19 @@ class _NotesListScreenState extends State<NotesListScreen> {
   void _deleteNoteConfirmation(int index) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      // FIX: Use a specific context for the dialog to ensure correct dismissal.
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete confirmation'),
         content: const Text('This will delete the note from the app. Exported files will not be affected.'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text('No')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text('No')),
           TextButton(
             onPressed: () {
-              setState(() {
-                notesBox.deleteAt(index);
-              });
-              Navigator.of(context).pop(); // This ensures the dialog closes correctly.
+              // Ensure the state update happens before the pop.
+              if (mounted) {
+                setState(() => notesBox.deleteAt(index));
+              }
+              Navigator.of(dialogContext).pop();
             },
             child: Text('Yes'),
           ),
@@ -116,42 +116,28 @@ class _NotesListScreenState extends State<NotesListScreen> {
   }
 
   Future<void> _importNotes() async {
-    // The FilePicker itself is cross-platform. No specific logic is needed here
-    // as it abstracts away the underlying OS file dialogs.
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      type: FileType.custom,
-      allowedExtensions: ['txt'],
-    );
-
+    FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.custom, allowedExtensions: ['txt']);
     if (result != null) {
       for (var file in result.files) {
         if (file.path != null) {
           final content = await File(file.path!).readAsString();
           final isEncrypted = content.startsWith("[ENCRYPTED]");
-          final newNote = {
-            'content': content,
-            'isEncrypted': isEncrypted,
-            'filename': p.basename(file.path!), // Get just the filename
-          };
+          final newNote = {'content': content, 'isEncrypted': isEncrypted, 'filename': p.basename(file.path!)};
           await notesBox.add(newNote);
         }
       }
-      setState(() {}); // Refresh the UI to show imported notes
+      if (mounted) setState(() {});
     }
   }
 
   Future<void> _handleEncryptedNoteTap(int index, Map noteData) async {
-    final password = await _showPasswordDialog("Enter password for '${noteData['filename']}'");
+    final password = await _showPasswordDialog(context, "Enter password for '${noteData['filename']}'", false);
     if (password != null && password.isNotEmpty) {
       final decryptedContent = EncryptionService.decryptText(noteData['content'], password);
       if (decryptedContent != null) {
-        setState(() {
-          // Store the decrypted content in the session cache.
-          _decryptedNotesCache[index] = decryptedContent;
-        });
+        if (mounted) setState(() => _decryptedNotesCache[index] = decryptedContent);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
       }
     }
   }
@@ -161,13 +147,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simple Notes', style: TextStyle(color: Colors.white70)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.file_open),
-            tooltip: 'Import Note(s)',
-            onPressed: _importNotes,
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.file_open), tooltip: 'Import Note(s)', onPressed: _importNotes)],
       ),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
@@ -178,25 +158,15 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemBuilder: (context, index) {
               final noteData = box.getAt(index)!;
               final isEncrypted = noteData['isEncrypted'] ?? false;
-              String displayContent;
-
-              if (isEncrypted) {
-                // If the note is encrypted, check the cache first. If not found, show the filename.
-                displayContent = _decryptedNotesCache[index] ?? "🔒 Encrypted: ${noteData['filename']}";
-              } else {
-                displayContent = noteData['content'];
-              }
-
+              String displayContent = isEncrypted ? _decryptedNotesCache[index] ?? "🔒 Encrypted: ${noteData['filename']}" : noteData['content'];
               return Card(
                 child: ListTile(
                   title: Text(displayContent, style: const TextStyle(color: Colors.white38), maxLines: 3, overflow: TextOverflow.ellipsis),
                   onTap: () {
                     if (isEncrypted && !_decryptedNotesCache.containsKey(index)) {
-                      // If it's an encrypted note not yet unlocked, prompt for password.
                       _handleEncryptedNoteTap(index, noteData);
                     } else {
-                      // Otherwise, open the editor with the (decrypted) content.
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen(index: index, note: displayContent)));
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, note: displayContent)));
                     }
                   },
                   leading: IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteNoteConfirmation(index), color: Colors.red[900]),
@@ -206,25 +176,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => EditNoteScreen())),
-      ),
-    );
-  }
-
-  Future<String?> _showPasswordDialog(String title) {
-    final passwordController = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: TextField(controller: passwordController, obscureText: true, decoration: InputDecoration(hintText: "Password")),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text("Cancel")),
-          TextButton(onPressed: () => Navigator.of(context).pop(passwordController.text), child: Text("OK")),
-        ],
-      ),
+      floatingActionButton: FloatingActionButton(child: const Icon(Icons.add, color: Colors.white), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen()))),
     );
   }
 }
@@ -235,14 +187,12 @@ class EditNoteScreen extends StatefulWidget {
   final int? index;
   final String? note;
   EditNoteScreen({this.index, this.note});
-
   @override
   _EditNoteScreenState createState() => _EditNoteScreenState();
 }
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
   late TextEditingController _controller;
-
   @override
   void initState() {
     super.initState();
@@ -251,16 +201,12 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   void _saveNote() {
     final notesBox = Hive.box<Map>('notesBox');
-    final newNote = {
-      'content': _controller.text,
-      'isEncrypted': false, // Notes saved internally are always plaintext.
-      'filename': 'Internal Note',
-    };
-
+    final content = _controller.text;
+    final isEncrypted = content.startsWith("[ENCRYPTED]");
+    final newNote = {'content': content, 'isEncrypted': isEncrypted, 'filename': isEncrypted ? 'Encrypted Note' : 'Internal Note'};
     if (widget.index != null) {
       notesBox.putAt(widget.index!, newNote);
     } else {
-      // Add new note to the beginning of the list.
       final List<Map> tempList = [newNote];
       tempList.addAll(notesBox.values);
       notesBox.clear().then((_) => notesBox.addAll(tempList));
@@ -268,54 +214,38 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     Navigator.pop(context);
   }
 
-  Future<void> _exportNote() async {
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => ExportNoteDialog(),
-    );
-
-    if (result == null) return; // User cancelled the dialog.
-
-    final bool encrypt = result['encrypt'];
-    final String? password = result['password'];
-    String fileContent = _controller.text;
-
-    if (encrypt) {
-      if (password == null || password.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password cannot be empty for encryption.')));
-        return;
-      }
-      fileContent = EncryptionService.encryptText(_controller.text, password);
-    }
-
-    // --- PLATFORM-AWARE EXPORT LOGIC ---
-    if (Platform.isAndroid || Platform.isIOS) {
-      // Mobile-specific export logic: Check permissions and save to external storage.
-      var status = await Permission.storage.status;
-      if (!status.isGranted) {
-        status = await Permission.storage.request();
-      }
-      if (status.isGranted) {
-        final directory = await getExternalStorageDirectory();
-        if (directory != null) {
-          final file = File('${directory.path}/${DateTime.now().toIso8601String()}.txt');
-          await file.writeAsString(fileContent);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to ${file.path}')));
+  Future<void> _toggleEncryption() async {
+    final currentText = _controller.text;
+    final isCurrentlyEncrypted = currentText.startsWith("[ENCRYPTED]");
+    if (isCurrentlyEncrypted) {
+      final password = await _showPasswordDialog(context, "Enter password to decrypt note", false);
+      if (password != null && password.isNotEmpty) {
+        final decryptedText = EncryptionService.decryptText(currentText, password);
+        if (decryptedText != null) {
+          if (mounted) setState(() => _controller.text = decryptedText);
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note decrypted successfully!')));
+        } else {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
         }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission denied.')));
       }
     } else {
-      // Desktop-specific export logic: Use a "Save As" file dialog.
-      String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save Your Note',
-        fileName: '${DateTime.now().toIso8601String()}.txt',
-      );
-      if (outputFile != null) {
-        final file = File(outputFile);
-        await file.writeAsString(fileContent);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to ${file.path}')));
+      final password = await _showPasswordDialog(context, "Set password to encrypt note", true);
+      if (password != null && password.isNotEmpty) {
+        final encryptedText = EncryptionService.encryptText(currentText, password);
+        if (mounted) setState(() => _controller.text = encryptedText);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note encrypted successfully!')));
       }
+    }
+  }
+
+  Future<void> _exportNote() async {
+    final bool? success = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ExportNoteDialog(noteContent: _controller.text),
+    );
+    if (success == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File exported successfully!'), duration: Duration(seconds: 2)));
     }
   }
 
@@ -326,96 +256,163 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       appBar: AppBar(
         title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
         actions: [
+          IconButton(icon: const Icon(Icons.enhanced_encryption), onPressed: _toggleEncryption, tooltip: 'Encrypt/Decrypt Note'),
           IconButton(icon: const Icon(Icons.sd_storage_outlined), onPressed: _exportNote, tooltip: 'Export Note'),
           IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(2.0),
+        padding: const EdgeInsets.all(8.0),
         child: TextField(controller: _controller, maxLines: null, decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder), keyboardAppearance: Brightness.dark, style: const TextStyle(color: Colors.white70)),
       ),
     );
   }
 }
 
-// --- EXPORT NOTE DIALOG WIDGET ---
+// --- UTILITY DIALOGS AND WIDGETS ---
+
+Future<String?> _showPasswordDialog(BuildContext context, String title, bool allowPrefill) {
+  final passwordController = TextEditingController();
+  final sessionManager = SessionManager();
+  if (allowPrefill && sessionManager.sessionPassword != null) {
+    passwordController.text = sessionManager.sessionPassword!;
+  }
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(hintText: "Password"), autofocus: true),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
+        TextButton(onPressed: () => Navigator.of(context).pop(passwordController.text), child: const Text("OK")),
+      ],
+    ),
+  );
+}
 
 class ExportNoteDialog extends StatefulWidget {
+  final String noteContent;
+  const ExportNoteDialog({Key? key, required this.noteContent}) : super(key: key);
   @override
   _ExportNoteDialogState createState() => _ExportNoteDialogState();
 }
 
 class _ExportNoteDialogState extends State<ExportNoteDialog> {
-  bool _encrypt = true;
-  bool _rememberPassword = false;
-  bool _passwordVisible = false;
-  final _passwordController = TextEditingController();
+  final _filenameController = TextEditingController();
   final _sessionManager = SessionManager();
+
+  bool _isSaving = false;
+  String? _errorMessage;
+  String _currentPath = "Loading path...";
+  bool get _isDesktop => Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
   @override
   void initState() {
     super.initState();
-    // Pre-fill password from session if it exists.
-    if (_sessionManager.sessionPassword != null) {
-      _passwordController.text = _sessionManager.sessionPassword!;
-      _rememberPassword = true;
+    _filenameController.text = '${DateTime.now().toIso8601String().replaceAll(":", "-").replaceAll(".", "-")}.txt';
+    _initializePaths();
+  }
+
+  Future<void> _initializePaths() async {
+    if (_sessionManager.defaultExportPath == null) {
+      Directory? dir;
+      if (_isDesktop) {
+        dir = await getDownloadsDirectory();
+      } else {
+        dir = await getExternalStorageDirectory();
+      }
+      _sessionManager.defaultExportPath = dir?.path ?? (await getApplicationDocumentsDirectory()).path;
+    }
+    if (mounted) setState(() => _currentPath = _sessionManager.lastExportPath ?? _sessionManager.defaultExportPath!);
+  }
+
+  Future<void> _doExport() async {
+    setState(() {
+      _isSaving = true;
+      _errorMessage = null;
+    });
+
+    final filename = _filenameController.text.trim();
+    if (filename.isEmpty) {
+      setState(() {
+        _errorMessage = "Filename cannot be empty.";
+        _isSaving = false;
+      });
+      return;
+    }
+
+    try {
+      // CHANGE: No longer open a file picker on desktop. Save directly.
+      final finalPath = p.join(_currentPath, filename);
+
+      // On mobile, we still need to check permissions first.
+      if (!_isDesktop) {
+        var status = await Permission.storage.status;
+        if (!status.isGranted) status = await Permission.storage.request();
+        if (!status.isGranted) throw "Storage permission was denied.";
+      }
+
+      final file = File(finalPath);
+      // Ensure the directory exists before writing.
+      await file.parent.create(recursive: true);
+      await file.writeAsString(widget.noteContent);
+
+      _sessionManager.lastExportPath = p.dirname(finalPath);
+      if (mounted) Navigator.of(context).pop(true);
+
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Failed to save file: ${e.toString()}\n\nTry selecting a different folder or check permissions.";
+        _isSaving = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Export Options'),
+      title: const Text('Export Note'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CheckboxListTile(
-              title: const Text('Encrypt with password'),
-              value: _encrypt,
-              onChanged: (value) => setState(() => _encrypt = value!),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-            ),
-            if (_encrypt) ...[
-              TextFormField(
-                controller: _passwordController,
-                obscureText: !_passwordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  suffixIcon: IconButton(
-                    icon: Icon(_passwordVisible ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+            Text('Save location:', style: Theme.of(context).textTheme.bodySmall),
+            Text(_currentPath, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
+            const SizedBox(height: 16),
+            TextField(controller: _filenameController, decoration: const InputDecoration(labelText: 'Filename')),
+            if (_isDesktop)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () async {
+                      final selectedPath = await FilePicker.platform.getDirectoryPath();
+                      if (selectedPath != null && mounted) setState(() => _currentPath = selectedPath);
+                    },
+                    child: const Text('Change Folder'),
                   ),
+                  TextButton(onPressed: () => setState(() => _currentPath = _sessionManager.defaultExportPath!), child: const Text('Reset')),
+                ],
+              ),
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 16.0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8.0),
+                  color: Colors.red[900],
+                  child: Text(_errorMessage!, style: const TextStyle(color: Colors.white)),
                 ),
               ),
-              CheckboxListTile(
-                title: const Text('Remember password for session'),
-                value: _rememberPassword,
-                onChanged: (value) => setState(() => _rememberPassword = value!),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ],
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        TextButton(
-          onPressed: () {
-            // Update or clear the session password based on the checkbox.
-            if (_rememberPassword) {
-              _sessionManager.sessionPassword = _passwordController.text;
-            } else {
-              _sessionManager.sessionPassword = null;
-            }
-            Navigator.of(context).pop({
-              'encrypt': _encrypt,
-              'password': _passwordController.text,
-            });
-          },
-          child: const Text('Export'),
+        TextButton(onPressed: _isSaving ? null : () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _isSaving ? null : _doExport,
+          child: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Export'),
         ),
       ],
     );
