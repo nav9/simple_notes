@@ -1,3 +1,5 @@
+//Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html
+//https://www.fluttericon.com/
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -150,7 +152,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simple Notes', style: TextStyle(color: Colors.white70)),
-        actions: [IconButton(icon: const Icon(Icons.file_open), tooltip: 'Import Note(s)', onPressed: _importNotes)],
+        actions: [IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import Note(s)', onPressed: _importNotes)],
       ),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
@@ -283,9 +285,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       appBar: AppBar(
         title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
         actions: [
+          IconButton(icon: const Icon(Icons.access_time), onPressed: _insertCurrentTime, tooltip: 'Insert Current Time'),
           IconButton(icon: const Icon(Icons.enhanced_encryption), onPressed: _toggleEncryption, tooltip: 'Encrypt/Decrypt Note'),
-          IconButton(icon: const Icon(Icons.sd_storage_outlined), onPressed: _exportNote, tooltip: 'Export Note'),
-          IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
+          IconButton(icon: const Icon(Icons.file_download), onPressed: _exportNote, tooltip: 'Export Note to storage'),
+          IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow, tooltip: 'Save Note'),
         ],
       ),
       body: Padding(
@@ -294,6 +297,21 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       ),
     );
   }
+
+  void _insertCurrentTime() {
+    final now = DateTime.now();
+    final formattedTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ";
+    final text = _controller.text;
+    final selection = _controller.selection;
+    final newText = text.replaceRange(selection.start, selection.end, formattedTime);
+    final newSelectionIndex = selection.start + formattedTime.length;
+    setState(() {
+      _controller.text = newText;
+      _controller.selection = TextSelection.collapsed(offset: newSelectionIndex);
+    });
+  }
+
+
 }
 
 // --- UTILITY DIALOGS AND WIDGETS ---
