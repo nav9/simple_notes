@@ -83,7 +83,7 @@ class NotesListScreen extends StatefulWidget {
 
 class _NotesListScreenState extends State<NotesListScreen> {
   late Box<Map> notesBox;
-  final Map<int, String> _decryptedNotesCache = {};
+  final Map<dynamic, String> _decryptedNotesCache = {}; // key = Hive key
 
   @override
   void initState() {
@@ -101,14 +101,16 @@ class _NotesListScreenState extends State<NotesListScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: Text('No')),
           TextButton(
-            onPressed: () {
-              // Ensure the state update happens before the pop.
-              if (mounted) {
-                setState(() => notesBox.deleteAt(index));
+            onPressed: () async {
+              final key = notesBox.keyAt(index);
+              await notesBox.deleteAt(index);
+              _decryptedNotesCache.remove(key);
+              if (mounted) setState(() {});
+              if (Navigator.of(dialogContext).canPop()) {
+                Navigator.of(dialogContext).pop();
               }
-              Navigator.of(dialogContext).pop();
             },
-            child: Text('Yes'),
+            child: const Text('Yes'),
           ),
         ],
       ),
@@ -135,7 +137,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
     if (password != null && password.isNotEmpty) {
       final decryptedContent = EncryptionService.decryptText(noteData['content'], password);
       if (decryptedContent != null) {
-        if (mounted) setState(() => _decryptedNotesCache[index] = decryptedContent);
+        final key = notesBox.keyAt(index);
+        if (mounted) setState(() => _decryptedNotesCache[key] = decryptedContent);
       } else {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
       }
@@ -157,16 +160,26 @@ class _NotesListScreenState extends State<NotesListScreen> {
             itemCount: box.length,
             itemBuilder: (context, index) {
               final noteData = box.getAt(index)!;
+              final key = box.keyAt(index);
               final isEncrypted = noteData['isEncrypted'] ?? false;
-              String displayContent = isEncrypted ? _decryptedNotesCache[index] ?? "🔒 Encrypted: ${noteData['filename']}" : noteData['content'];
+
+              String displayContent;
+              if (isEncrypted) {
+                displayContent = _decryptedNotesCache[key] ?? "🔒 Encrypted: ${noteData['filename']}";
+              } else {
+                displayContent = noteData['content'];
+              }
               return Card(
                 child: ListTile(
                   title: Text(displayContent, style: const TextStyle(color: Colors.white38), maxLines: 3, overflow: TextOverflow.ellipsis),
                   onTap: () {
-                    if (isEncrypted && !_decryptedNotesCache.containsKey(index)) {
+                    final key = box.keyAt(index);
+                    if (isEncrypted && !_decryptedNotesCache.containsKey(key)) {
                       _handleEncryptedNoteTap(index, noteData);
                     } else {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, note: displayContent)));
+                      final content = _decryptedNotesCache[key] ?? noteData['content'];
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, note: content)));
                     }
                   },
                   leading: IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteNoteConfirmation(index), color: Colors.red[900]),
