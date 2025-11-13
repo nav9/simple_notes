@@ -206,10 +206,24 @@ class EditNoteScreen extends StatefulWidget {
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
   late TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.note);
+    // Automatically focus the text field if this is a new note.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.note == null || widget.note!.isEmpty) {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
   }
 
   void _saveNote() {
@@ -276,7 +290,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: TextField(controller: _controller, maxLines: null, decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder), keyboardAppearance: Brightness.dark, style: const TextStyle(color: Colors.white70)),
+        child: TextField(controller: _controller, focusNode: _focusNode, maxLines: null, decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder), keyboardAppearance: Brightness.dark, style: const TextStyle(color: Colors.white70)),
       ),
     );
   }
