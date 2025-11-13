@@ -281,19 +281,59 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   @override
   Widget build(BuildContext context) {
     OutlineInputBorder textBorder = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4)), borderSide: BorderSide(width: 1, color: Colors.black54));
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
-        actions: [
-          IconButton(icon: const Icon(Icons.access_time), onPressed: _insertCurrentTime, tooltip: 'Insert Current Time'),
-          IconButton(icon: const Icon(Icons.enhanced_encryption), onPressed: _toggleEncryption, tooltip: 'Encrypt/Decrypt Note'),
-          IconButton(icon: const Icon(Icons.file_download), onPressed: _exportNote, tooltip: 'Export Note to storage'),
-          IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow, tooltip: 'Save Note'),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: TextField(controller: _controller, focusNode: _focusNode, maxLines: null, decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder), keyboardAppearance: Brightness.dark, style: const TextStyle(color: Colors.white70)),
+    return WillPopScope(
+      onWillPop: () async {
+        // Check if there is unsaved text
+        if (_controller.text.trim().isNotEmpty &&
+            (widget.note == null || _controller.text != widget.note)) {
+          final shouldSave = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Save changes?'),
+              content: const Text('Do you want to save this note before leaving?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Discard'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
+                ),
+              ],
+            ),
+          );
+          if (shouldSave == true) _saveNote();
+          return shouldSave != null; // proceed either way
+        }
+        return true; // No changes to save
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
+          actions: [
+            IconButton(icon: const Icon(Icons.enhanced_encryption), onPressed: _toggleEncryption, tooltip: 'Encrypt/Decrypt Note'),
+            IconButton(icon: const Icon(Icons.system_update_alt), onPressed: _exportNote, tooltip: 'Export Note'), // changed icon
+            IconButton(icon: const Icon(Icons.access_time), onPressed: _insertCurrentTime, tooltip: 'Insert Current Time'),
+            IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            maxLines: null,
+            decoration: InputDecoration(
+              hintText: 'Enter your note',
+              fillColor: Colors.black54,
+              enabledBorder: textBorder,
+              focusedBorder: textBorder,
+            ),
+            keyboardAppearance: Brightness.dark,
+            style: const TextStyle(color: Colors.white70),
+          ),
+        ),
       ),
     );
   }
