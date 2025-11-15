@@ -1,5 +1,6 @@
 // main.dart
-// Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html
+//Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html
+//Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html and https://www.fluttericon.com/
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for clipboard
