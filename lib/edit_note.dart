@@ -28,6 +28,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   final _titleController = TextEditingController();
   final _focusNode = FocusNode();
 
+  // notifier for highlighted ranges (used by highlight overlay)
+  final ValueNotifier<List<TextRange>> _highlights = ValueNotifier<List<TextRange>>([]);
+
   bool _isReadOnlyEncrypted = false;
   bool _isEditing = false;
   TextSelection? _lastSelection;
@@ -77,6 +80,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     _textController.addListener(() {
       final sel = _textController.selection;
       if (sel.isValid) _lastSelection = sel;
+      // whenever text changes we should update highlights (they may now be stale)
+      _highlights.value = [];
     });
   }
 
@@ -85,6 +90,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     _textController.dispose();
     _titleController.dispose();
     _focusNode.dispose();
+    _highlights.dispose();
     super.dispose();
   }
 
@@ -157,6 +163,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   }
 
   Future<bool> _onWillPop() async {
+    // If ESC pressed or back navigation, clear highlights
+    _highlights.value = [];
     if (_isDirty) {
       final shouldSave = await showDialog<bool>(
         context: context,
@@ -306,75 +314,157 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   }
 
   void _openSearchReplace() {
+    // show sheet and pass controller and highlight notifier
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (_) => SearchReplaceSheet(
         controller: _textController,
+        highlightNotifier: _highlights,
       ),
+    );
+  }
+
+  // Keyboard shortcuts for desktop (Linux)
+  void _handleKey(RawKeyEvent event) {
+    if (event is RawKeyDownEvent) {
+      final isLinux = Platform.isLinux;
+      // Use control for linux/desktop; also accept meta for others? We'll check ctrlKey.
+      if (event.isControlPressed && event.logicalKey == LogicalKeyboardKey.keyF) {
+        _openSearchReplace();
+      } else if (event.isControlPressed && event.logicalKey == LogicalKeyboardKey.keyS) {
+        // save
+        _saveNote(popAfterSave: false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved (Ctrl+S)')));
+      } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+        // pop if possible
+        if (Navigator.of(context).canPop()) Navigator.of(context).maybePop();
+      }
+    }
+  }
+
+  // Build highlighted RichText from controller.text and _highlights ranges
+  Widget _buildHighlightedText() {
+    return ValueListenableBuilder<List<TextRange>>(
+      valueListenable: _highlights,
+      builder: (context, ranges, _) {
+        final text = _textController.text;
+        if (text.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        if (ranges.isEmpty) {
+          // no highlights — render plain text with default style
+          return Text.rich(TextSpan(text: text, style: const TextStyle(color: Colors.white70, fontSize: 16)));
+        }
+        // sort and merge ranges to avoid overlap
+        final sorted = List<TextRange>.from(ranges)..sort((a, b) => a.start.compareTo(b.start));
+        final spans = <TextSpan>[];
+        int cursor = 0;
+        for (final r in sorted) {
+          if (r.start > cursor) {
+            spans.add(TextSpan(text: text.substring(cursor, r.start)));
+          }
+          // highlighted span
+          spans.add(TextSpan(
+              text: text.substring(r.start, r.end),
+              style: const TextStyle(backgroundColor: Color(0xFF4444AA), color: Colors.white)));
+          cursor = r.end;
+        }
+        if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor)));
+        return Text.rich(TextSpan(children: spans), softWrap: true);
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final canInsertTime = !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.search),
-              tooltip: 'Find & Replace',
-              onPressed: _openSearchReplace,
-            ),
-            IconButton(
-              icon: const Icon(Icons.access_time),
-              tooltip: 'Insert Current Time',
-              onPressed: canInsertTime ? _insertCurrentTime : null,
-              color: canInsertTime ? Colors.white : Colors.white24,
-            ),
-            IconButton(icon: const Icon(Icons.copy), tooltip: 'Copy', onPressed: _copyToClipboard),
-            IconButton(
-              icon: const Icon(Icons.enhanced_encryption),
-              tooltip: _isReadOnlyEncrypted ? 'Decrypt Note' : 'Encrypt Note',
-              onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,
-              color: _isReadOnlyEncrypted ? Colors.green : null,
-            ),
-            IconButton(icon: const Icon(Icons.system_update_alt), tooltip: 'Export note', onPressed: _exportNote),
-            IconButton(
-              icon: const Icon(Icons.save),
-              tooltip: 'Save',
-              onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),
-              color: _isReadOnlyEncrypted ? Colors.white24 : Colors.yellow,
-            ),
-          ],
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              TextField(
-                controller: _titleController,
-                decoration: const InputDecoration(labelText: 'Title (optional)', hintText: 'Identifying name (not encrypted)'),
-                onChanged: (v) {
-                  setState(() {});
-                },
-                onSubmitted: (_) => FocusScope.of(context).requestFocus(_focusNode),
+
+    // Wrap in RawKeyboardListener for desktop shortcuts
+    return RawKeyboardListener(
+      focusNode: FocusNode(),
+      onKey: _handleKey,
+      child: WillPopScope(
+        onWillPop: _onWillPop,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.search),
+                tooltip: 'Find & Replace (Ctrl+F)',
+                onPressed: _openSearchReplace,
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: TextField(
-                  controller: _textController,
-                  focusNode: _focusNode,
-                  readOnly: _isReadOnlyEncrypted,
-                  maxLines: null,
-                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Enter your note'),
-                  style: const TextStyle(fontSize: 16),
-                ),
+              IconButton(
+                icon: const Icon(Icons.access_time),
+                tooltip: 'Insert Current Time',
+                onPressed: canInsertTime ? _insertCurrentTime : null,
+                color: canInsertTime ? Colors.white : Colors.white24,
+              ),
+              IconButton(icon: const Icon(Icons.copy), tooltip: 'Copy', onPressed: _copyToClipboard),
+              IconButton(
+                icon: const Icon(Icons.enhanced_encryption),
+                tooltip: _isReadOnlyEncrypted ? 'Decrypt Note' : 'Encrypt Note',
+                onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,
+                color: _isReadOnlyEncrypted ? Colors.green : null,
+              ),
+              IconButton(icon: const Icon(Icons.system_update_alt), tooltip: 'Export note', onPressed: _exportNote),
+              IconButton(
+                icon: const Icon(Icons.save),
+                tooltip: 'Save (Ctrl+S)',
+                onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),
+                color: _isReadOnlyEncrypted ? Colors.white24 : Colors.yellow,
               ),
             ],
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(labelText: 'Title (optional)', hintText: 'Identifying name (not encrypted)'),
+                  onChanged: (v) {
+                    setState(() {});
+                  },
+                  onSubmitted: (_) => FocusScope.of(context).requestFocus(_focusNode),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // Highlighted rich text behind
+                      Positioned.fill(
+                        child: Container(
+                          padding: const EdgeInsets.all(8.0),
+                          alignment: Alignment.topLeft,
+                          child: SingleChildScrollView(
+                            child: _buildHighlightedText(),
+                          ),
+                        ),
+                      ),
+                      // Transparent TextField on top for editing/caret
+                      Positioned.fill(
+                        child: TextField(
+                          controller: _textController,
+                          focusNode: _focusNode,
+                          readOnly: _isReadOnlyEncrypted,
+                          maxLines: null,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            hintText: 'Enter your note',
+                          ),
+                          // make text transparent so underlying RichText is visible
+                          style: TextStyle(color: Colors.transparent, fontSize: 16, height: 1.4),
+                          cursorColor: Colors.white,
+                          // ensure selection color remains visible (selection color is separate)
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

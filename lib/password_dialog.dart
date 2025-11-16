@@ -1,6 +1,7 @@
 // lib/password_dialog.dart
 import 'package:flutter/material.dart';
 import 'session_manager.dart';
+import 'package:flutter/services.dart';
 
 Future<String?> showPasswordDialog(BuildContext context, String title, bool allowPrefill) {
   final controller = TextEditingController();
