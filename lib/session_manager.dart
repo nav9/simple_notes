@@ -1,4 +1,4 @@
-// session_manager.dart
+// lib/session_manager.dart
 class SessionManager {
   static final SessionManager _instance = SessionManager._internal();
 
