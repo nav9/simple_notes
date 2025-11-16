@@ -1,21 +1,30 @@
 // main.dart
 //Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html
 //Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html and https://www.fluttericon.com/
+// lib/main.dart
+// Single-file implementation (giant file) using Hive + setState + Navigator
+// Keep your session_manager.dart as provided (in lib/session_manager.dart)
+
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // for clipboard
+import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
-import 'package:universal_io/io.dart';
 import 'package:path/path.dart' as p;
 import 'session_manager.dart';
 
-// --- SERVICES (Encryption) ---
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final appDir = await getApplicationDocumentsDirectory();
+  await Hive.initFlutter(appDir.path);
+  await Hive.openBox<Map>('notesBox');
+  runApp(SimpleNotesApp());
+}
+
 class EncryptionService {
-  // Fixed IV (for simplicity in this example; see comments in original)
   static final iv = encrypt.IV.fromBase64('AAAAAAAAAAAAAAAAAAAAAA==');
 
   static String encryptText(String text, String password) {
@@ -38,44 +47,17 @@ class EncryptionService {
   }
 }
 
-// --- APP INITIALIZATION ---
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final appDocumentDir = await getApplicationDocumentsDirectory();
-  Hive.init(appDocumentDir.path);
-  await Hive.openBox<Map>('notesBox');
-  runApp(SimpleNotesApp());
-}
-
-// --- MAIN APP WIDGET ---
 class SimpleNotesApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Simple Notes',
-      theme: ThemeData.light(),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: Colors.black,
-        scaffoldBackgroundColor: Colors.grey[850],
-        appBarTheme: AppBarTheme(color: Colors.grey[900]),
-        floatingActionButtonTheme:
-        const FloatingActionButtonThemeData(backgroundColor: Colors.blueGrey),
-        textTheme: const TextTheme(
-            bodyLarge: TextStyle(color: Colors.white),
-            bodyMedium: TextStyle(color: Colors.white70),
-            labelLarge: TextStyle(color: Colors.white)),
-        inputDecorationTheme: InputDecorationTheme(
-            filled: true, fillColor: Colors.grey[800], border: OutlineInputBorder(), labelStyle: TextStyle(color: Colors.white)),
-        listTileTheme: const ListTileThemeData(textColor: Colors.white, iconColor: Colors.white),
-      ),
-      themeMode: ThemeMode.dark,
+      theme: ThemeData.dark(),
       home: NotesListScreen(),
     );
   }
 }
 
-// --- NOTES LIST SCREEN ---
 class NotesListScreen extends StatefulWidget {
   @override
   _NotesListScreenState createState() => _NotesListScreenState();
@@ -83,7 +65,8 @@ class NotesListScreen extends StatefulWidget {
 
 class _NotesListScreenState extends State<NotesListScreen> {
   late Box<Map> notesBox;
-  final Map<dynamic, String> _decryptedNotesCache = {}; // key = Hive key
+  final Map<dynamic, String> _decryptedNotesCache = {}; // per-note plaintext cache
+  final SessionManager _session = SessionManager();
 
   @override
   void initState() {
@@ -91,48 +74,104 @@ class _NotesListScreenState extends State<NotesListScreen> {
     notesBox = Hive.box<Map>('notesBox');
   }
 
+  // Encrypt all notes that we currently have decrypted in memory (use stored per-note passwords).
   Future<void> _encryptAllDecryptedNotes() async {
-    final sessionManager = SessionManager();
-    final notes = Hive.box<Map>('notesBox');
+    if (_decryptedNotesCache.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No decrypted notes in session to encrypt.')));
+      // still clear all stored passwords per requirement
+      _session.clearAllNotePasswords();
+      return;
+    }
 
-    if (_decryptedNotesCache.isEmpty) return;
-
-    // For each decrypted note in session cache use stored password for that key
     for (final entry in _decryptedNotesCache.entries.toList()) {
       final key = entry.key;
       final plainText = entry.value;
-      final pw = sessionManager.getNotePassword(key);
+      final pw = _session.getNotePassword(key);
       if (pw == null || pw.isEmpty) {
-        // If any note lacks password, show message and skip it.
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Missing password for a note — skipping some notes.')));
+        // skip if no pw for this note
         continue;
       }
       final encryptedText = EncryptionService.encryptText(plainText, pw);
-      final oldData = notes.get(key);
+      final old = notesBox.get(key);
       final updated = {
         'content': encryptedText,
         'isEncrypted': true,
-        'filename': oldData?['filename'] ?? 'Encrypted Note'
+        'title': old?['title'] ?? null,
+        'isTrashed': old?['isTrashed'] ?? false
       };
-      await notes.put(key, updated);
+      await notesBox.put(key, updated);
       _decryptedNotesCache.remove(key);
-      sessionManager.clearNotePassword(key); // remove pw from memory after re-encryption
+      // clear the per-note password (require re-entry later)
+      _session.clearNotePassword(key);
     }
+
+    // clear all passwords for safety (require re-entry)
+    _session.clearAllNotePasswords();
 
     if (mounted) {
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All decrypted notes have been re-encrypted.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All session-decrypted notes re-encrypted; session passwords cleared.')));
     }
   }
 
-  Future<void> _exportAllNotes() async {
-    final sessionManager = SessionManager();
-    final notes = Hive.box<Map>('notesBox');
+  // Move a note to trash (no confirmation) and show undo snackbar at top
+  void _moveNoteToTrash(int index) async {
+    final key = notesBox.keyAt(index);
+    final note = notesBox.getAt(index)!;
+    final updated = Map<String, dynamic>.from(note);
+    updated['isTrashed'] = true;
+    await notesBox.put(key, updated);
+    // remove from decrypted cache & clear per-note password
+    _decryptedNotesCache.remove(key);
+    _session.clearNotePassword(key);
 
-    // Ensure export path exists (use session default or application documents)
-    String exportDir = sessionManager.defaultExportPath ?? (await getApplicationDocumentsDirectory()).path;
-    // On mobile check storage permission
+    // Show floating top-positioned snackbar for 3 seconds with UNDO
+    final snackBar = SnackBar(
+      content: const Text('Note moved to Trash. You can restore it from the menu.'),
+      duration: const Duration(seconds: 3),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0), // near top
+      action: SnackBarAction(
+        label: 'UNDO',
+        onPressed: () async {
+          final restored = Map<String, dynamic>.from(await notesBox.get(key) as Map);
+          restored['isTrashed'] = false;
+          await notesBox.put(key, restored);
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(snackBar);
+
+    if (mounted) setState(() {});
+  }
+
+  // Import notes (txt files)
+  Future<void> _importNotes() async {
+    FilePickerResult? res = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.custom, allowedExtensions: ['txt']);
+    if (res != null) {
+      for (var file in res.files) {
+        if (file.path == null) continue;
+        final content = await File(file.path!).readAsString();
+        final isEncrypted = content.startsWith('[ENCRYPTED]');
+        final newNote = {
+          'content': content,
+          'isEncrypted': isEncrypted,
+          'title': p.basename(file.path!), // default title from filename
+          'isTrashed': false,
+        };
+        await notesBox.add(newNote);
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  // Export all notes to a folder (re-encrypt decrypted notes first)
+  Future<void> _exportAll() async {
+    // ensure storage permission for mobile
     bool isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
     if (!isDesktop) {
       var status = await Permission.storage.status;
@@ -143,676 +182,685 @@ class _NotesListScreenState extends State<NotesListScreen> {
       }
     }
 
-    // First re-encrypt any decrypted notes (using stored passwords)
-    for (final entry in _decryptedNotesCache.entries.toList()) {
-      final key = entry.key;
-      final plainText = entry.value;
-      final pw = sessionManager.getNotePassword(key);
-      if (pw == null || pw.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Missing password for some notes. Export skipped for them.')));
-        continue;
-      }
-      final encryptedText = EncryptionService.encryptText(plainText, pw);
-      final oldData = notes.get(key);
-      final updated = {
-        'content': encryptedText,
-        'isEncrypted': true,
-        'filename': oldData?['filename'] ?? 'Encrypted Note'
-      };
-      await notes.put(key, updated);
-      _decryptedNotesCache.remove(key);
-      sessionManager.clearNotePassword(key);
-    }
+    // choose export directory (use app documents)
+    final dir = await getApplicationDocumentsDirectory();
+    final exportDir = Directory(p.join(dir.path, 'simple_notes_export'));
+    await exportDir.create(recursive: true);
 
-    // Now export each note to exportDir
-    Directory dir = Directory(exportDir);
-    await dir.create(recursive: true);
-
-    for (int i = 0; i < notes.length; i++) {
-      final data = notes.getAt(i)!;
-      final filename = data['filename'] ?? 'note_${i + 1}.txt';
-      final fullpath = p.join(exportDir, filename);
+    for (int i = 0; i < notesBox.length; i++) {
+      final n = notesBox.getAt(i)!;
+      final filename = (n['title'] != null && (n['title'] as String).trim().isNotEmpty) ? n['title'] : 'note_$i.txt';
+      final path = p.join(exportDir.path, filename);
       try {
-        final f = File(fullpath);
-        await f.writeAsString(data['content']);
+        await File(path).writeAsString(n['content']);
       } catch (e) {
-        // skip problematic ones
+        // ignore write errors and continue
       }
     }
 
-    // remember last export path
-    sessionManager.lastExportPath = exportDir;
-
-    if (mounted) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All notes exported.')));
-    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Exported notes to ${exportDir.path}')));
   }
 
-  void _deleteNoteConfirmation(int index) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete confirmation'),
-        content: const Text('This will delete the note from the app. Exported files will not be affected.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('No')),
-          TextButton(
-            onPressed: () async {
-              final key = notesBox.keyAt(index);
-              await notesBox.deleteAt(index);
-              _decryptedNotesCache.remove(key);
-              SessionManager().clearNotePassword(key);
-              if (mounted) setState(() {});
-              if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Yes'),
-          ),
-        ],
+  // Drawer: Help & Trash pages
+  void _openHelp() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
+  }
+
+  void _openTrash() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => TrashScreen()));
+  }
+
+  Widget _buildTileForNote(int index) {
+    final note = notesBox.getAt(index)!;
+    final key = notesBox.keyAt(index);
+    final isTrashed = note['isTrashed'] ?? false;
+    if (isTrashed) return SizedBox.shrink(); // don't show trashed here
+
+    final isEncrypted = note['isEncrypted'] ?? false;
+    final title = (note['title'] as String?)?.trim();
+    String displayTitle;
+    String displaySubtitle = '';
+
+    if (title != null && title.isNotEmpty) {
+      displayTitle = title;
+      // subtitle show small snippet if available
+      if (!isEncrypted) {
+        final content = note['content'] as String;
+        displaySubtitle = _singleLineSnippet(content);
+      } else {
+        displaySubtitle = '🔒 Encrypted';
+      }
+    } else {
+      // if no title, show snippet of content or encrypted placeholder
+      if (isEncrypted) {
+        displayTitle = '🔒 Encrypted: ${note['filename'] ?? 'Encrypted Note'}';
+        displaySubtitle = '';
+      } else {
+        final content = note['content'] as String;
+        displayTitle = _singleLineSnippet(content);
+      }
+    }
+
+    return Card(
+      child: ListTile(
+        title: Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: displaySubtitle.isNotEmpty ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
+        leading: IconButton(
+          icon: const Icon(Icons.delete, color: Colors.redAccent),
+          onPressed: () => _moveNoteToTrash(index),
+        ),
+        onTap: () {
+          final content = note['content'] as String;
+          final initialIsEncrypted = (note['isEncrypted'] ?? false) as bool;
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
+          ).then((_) {
+            if (mounted) setState(() {});
+          });
+        },
       ),
     );
   }
 
-  Future<void> _importNotes() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.custom, allowedExtensions: ['txt']);
-    if (result != null) {
-      for (var file in result.files) {
-        if (file.path != null) {
-          final content = await File(file.path!).readAsString();
-          final isEncrypted = content.startsWith("[ENCRYPTED]");
-          final newNote = {
-            'content': content,
-            'isEncrypted': isEncrypted,
-            'filename': p.basename(file.path!)
-          };
-          await notesBox.add(newNote);
-        }
-      }
-      if (mounted) setState(() {});
-    }
+  String _singleLineSnippet(String text, {int maxLen = 100}) {
+    final single = text.replaceAll('\n', ' ');
+    if (single.length <= maxLen) return single;
+    return single.substring(0, maxLen) + '...';
   }
 
-  // NOTE: tapping an encrypted note no longer forces a password prompt.
-  // Instead we open the EditNoteScreen with the encrypted text shown read-only.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Simple Notes', style: TextStyle(color: Colors.white70)),
+        title: const Text('Simple Notes'),
         actions: [
-          // Encrypt all decrypted notes — only visible when decrypted cache not empty
-          if (_decryptedNotesCache.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.lock),
-              tooltip: 'Encrypt all decrypted notes',
-              onPressed: _encryptAllDecryptedNotes,
-            ),
-          // Export all
-          IconButton(
-            icon: const Icon(Icons.download_outlined),
-            tooltip: 'Export all notes',
-            onPressed: _exportAllNotes,
-          ),
-          // Import
-          IconButton(
-              icon: const Icon(Icons.present_to_all),
-              tooltip: 'Import Note(s)',
-              onPressed: _importNotes),
+          IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
+          IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export all notes', onPressed: _exportAll),
+          IconButton(icon: const Icon(Icons.input), tooltip: 'Import notes', onPressed: _importNotes),
         ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            DrawerHeader(child: Text('Menu', style: Theme.of(context).textTheme.headlineSmall)),
+            ListTile(
+              leading: const Icon(Icons.help_outline),
+              title: const Text('Help'),
+              onTap: () {
+                Navigator.pop(context);
+                _openHelp();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Trash'),
+              onTap: () {
+                Navigator.pop(context);
+                _openTrash();
+              },
+            ),
+          ],
+        ),
       ),
       body: ValueListenableBuilder(
         valueListenable: notesBox.listenable(),
         builder: (context, Box<Map> box, _) {
-          if (box.values.isEmpty) return Center(child: Text('Add or import a note', style: Theme.of(context).textTheme.bodyLarge));
+          // show non-trashed notes only
+          final nonTrashIndices = <int>[];
+          for (var i = 0; i < box.length; i++) {
+            final n = box.getAt(i)!;
+            final isTrashed = n['isTrashed'] ?? false;
+            if (!isTrashed) nonTrashIndices.add(i);
+          }
+          if (nonTrashIndices.isEmpty) return const Center(child: Text('No notes. Tap + to create or import one.'));
           return ListView.builder(
-            itemCount: box.length,
-            itemBuilder: (context, index) {
-              final noteData = box.getAt(index)!;
-              final key = box.keyAt(index);
-              final isEncrypted = noteData['isEncrypted'] ?? false;
-
-              String displayContent;
-              if (isEncrypted) {
-                // If we have plaintext in local cache use it
-                if (_decryptedNotesCache.containsKey(key)) {
-                  displayContent = _decryptedNotesCache[key]!;
-                } else {
-                  // If there's a session password for this note, try to decrypt on-the-fly and cache it
-                  final sessionPw = SessionManager().getNotePassword(key);
-                  if (sessionPw != null && sessionPw.isNotEmpty) {
-                    final decrypted = EncryptionService.decryptText(noteData['content'], sessionPw);
-                    if (decrypted != null) {
-                      _decryptedNotesCache[key] = decrypted;
-                      displayContent = decrypted;
-                    } else {
-                      // cannot decrypt with stored pw (maybe wrong) -> show locked
-                      displayContent = "🔒 Encrypted: ${noteData['filename']}";
-                    }
-                  } else {
-                    displayContent = "🔒 Encrypted: ${noteData['filename']}";
-                  }
-                }
-              } else {
-                displayContent = noteData['content'];
-              }
-
-              return Card(
-                child: ListTile(
-                  title: Text(displayContent, style: const TextStyle(color: Colors.white38), maxLines: 3, overflow: TextOverflow.ellipsis),
-                  onTap: () {
-                    final key = box.keyAt(index);
-                    final content = noteData['content'];
-                    final isEncryptedNow = noteData['isEncrypted'] ?? false;
-
-                    // Open editor: if encrypted -> open in read-only encrypted view (no prompt).
-                    // If decrypted in memory or not encrypted -> open editable view.
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => EditNoteScreen(
-                                index: index,
-                                noteKey: key,
-                                note: content,
-                                initialIsEncrypted: isEncryptedNow))).then((_) {
-                      // After returning, refresh state (in case edits changed encryption)
-                      if (mounted) setState(() {});
-                    });
-                  },
-                  leading: IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteNoteConfirmation(index), color: Colors.red[900]),
-                ),
-              );
+            itemCount: nonTrashIndices.length,
+            itemBuilder: (context, idx) {
+              final i = nonTrashIndices[idx];
+              return _buildTileForNote(i);
             },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
-          child: const Icon(Icons.add, color: Colors.white),
-          onPressed: () {
-            // new note: will not have a key yet; after saving it will be put into Hive
-            Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {
-              if (mounted) setState(() {});
-            });
-          }),
+        child: const Icon(Icons.add),
+        onPressed: () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {
+            if (mounted) setState(() {});
+          });
+        },
+      ),
     );
   }
 }
 
-// --- EDIT NOTE SCREEN ---
+// --- EditNoteScreen ---
 class EditNoteScreen extends StatefulWidget {
-  final int? index; // null for new note
-  final dynamic? noteKey; // Hive key for existing notes
-  final String? note; // content (could be encrypted or decrypted depending on context)
+  final int? index; // Hive index (position)
+  final dynamic? noteKey; // Hive key
+  final String? note; // content (encrypted or plaintext)
   final bool initialIsEncrypted;
+
   EditNoteScreen({this.index, this.noteKey, this.note, this.initialIsEncrypted = false});
+
   @override
   _EditNoteScreenState createState() => _EditNoteScreenState();
 }
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
-  late TextEditingController _controller;
+  final _textController = TextEditingController();
+  final _titleController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  bool _isEditing = false; // track focus
-  TextSelection? _lastSelection; // remember last selection even if focus changes
-  bool _isReadOnlyEncrypted = false; // when editor shows encrypted content in read-only state
+  bool _isReadOnlyEncrypted = false;
+  bool _isEditing = false;
+  TextSelection? _lastSelection;
+  String? _originalTextSnapshot; // used to detect dirty changes
+  String? _originalTitleSnapshot;
+  final _notesBox = Hive.box<Map>('notesBox');
+  final _session = SessionManager();
 
   @override
   void initState() {
     super.initState();
-
-    _controller = TextEditingController(text: widget.note ?? '');
-    // Determine read-only encrypted state: if the content begins with [ENCRYPTED] and there's no decrypted session password
-    final isEncryptedContent = (_controller.text.startsWith('[ENCRYPTED]')) || widget.initialIsEncrypted;
-    final sessionPw = SessionManager().getNotePassword(widget.noteKey);
-    if (isEncryptedContent && sessionPw == null) {
-      // Show as read-only encrypted until user decrypts
-      _isReadOnlyEncrypted = true;
-      // ensure we show the encrypted payload, not an emptied text
-      // (_controller already has widget.note)
-    } else {
-      // If content is encrypted but session pw exists, decrypt now for editing view
-      if (isEncryptedContent && sessionPw != null) {
-        final decrypted = EncryptionService.decryptText(_controller.text, sessionPw);
-        if (decrypted != null) {
-          _controller.text = decrypted;
-          _isReadOnlyEncrypted = false;
-        } else {
-          // cannot decrypt with stored pw -> keep read-only encrypted
-          _isReadOnlyEncrypted = true;
-        }
-      } else {
-        _isReadOnlyEncrypted = false;
+    final content = widget.note ?? '';
+    _textController.text = content;
+    _originalTextSnapshot = content;
+    // load title if exists
+    if (widget.noteKey != null) {
+      final entry = _notesBox.get(widget.noteKey);
+      if (entry != null && entry['title'] != null) {
+        _titleController.text = entry['title'] as String;
+        _originalTitleSnapshot = _titleController.text;
       }
     }
 
-    // Auto-focus new notes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.note == null || widget.note!.isEmpty) {
-        _focusNode.requestFocus();
+    final isEncryptedContent = content.startsWith('[ENCRYPTED]') || widget.initialIsEncrypted;
+    final sessionPw = _session.getNotePassword(widget.noteKey);
+    if (isEncryptedContent && (sessionPw == null)) {
+      _isReadOnlyEncrypted = true;
+    } else if (isEncryptedContent && sessionPw != null) {
+      // try to decrypt with stored password
+      final dec = EncryptionService.decryptText(content, sessionPw);
+      if (dec != null) {
+        _textController.text = dec;
+        _originalTextSnapshot = dec;
+        _isReadOnlyEncrypted = false;
+      } else {
+        _isReadOnlyEncrypted = true;
       }
-    });
+    } else {
+      _isReadOnlyEncrypted = false;
+    }
 
-    // track focus
     _focusNode.addListener(() {
       setState(() {
         _isEditing = _focusNode.hasFocus;
       });
     });
 
-    // track selection/ cursor position
-    _controller.addListener(() {
-      final sel = _controller.selection;
-      if (sel.isValid) {
-        _lastSelection = sel;
-      }
+    _textController.addListener(() {
+      final sel = _textController.selection;
+      if (sel.isValid) _lastSelection = sel;
     });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _textController.dispose();
+    _titleController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
+  bool get _isDirty {
+    final currentText = _textController.text;
+    final currentTitle = _titleController.text;
+    if (_originalTextSnapshot != null && currentText != _originalTextSnapshot) return true;
+    if (_originalTitleSnapshot != null && currentTitle != _originalTitleSnapshot) return true;
+    // if original snapshots were null and user entered text/title, treat as dirty
+    if (_originalTextSnapshot == null && currentText.trim().isNotEmpty) return true;
+    if (_originalTitleSnapshot == null && currentTitle.trim().isNotEmpty) return true;
+    return false;
+  }
+
+  Future<bool> _onWillPop() async {
+    if (_isDirty) {
+      final shouldSave = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Save changes?'),
+          content: const Text('Do you want to save this note before leaving?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Discard')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+          ],
+        ),
+      );
+      if (shouldSave == true) _saveNote();
+      return shouldSave != null;
+    }
+    return true;
+  }
+
   Future<void> _copyToClipboard() async {
-    await Clipboard.setData(ClipboardData(text: _controller.text));
+    await Clipboard.setData(ClipboardData(text: _textController.text));
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')));
   }
 
   Future<void> _decryptInEditor() async {
-    // Ask for password, decrypt and store session password
     final password = await _showPasswordDialog(context, "Enter password to decrypt note", false);
-    if (password != null && password.isNotEmpty) {
-      final decrypted = EncryptionService.decryptText(_controller.text, password);
-      if (decrypted != null) {
-        // store password in session per-note
-        if (widget.noteKey != null) SessionManager().storeNotePassword(widget.noteKey, password);
-        setState(() {
-          _controller.text = decrypted;
-          _isReadOnlyEncrypted = false;
-        });
-        // keep focus in editor
-        Future.delayed(const Duration(milliseconds: 50), () {
-          _focusNode.requestFocus();
-        });
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note decrypted successfully!')));
-      } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
-      }
+    if (password == null || password.isEmpty) return;
+    final decrypted = EncryptionService.decryptText(_textController.text, password);
+    if (decrypted != null) {
+      // store per-note password
+      if (widget.noteKey != null) _session.storeNotePassword(widget.noteKey, password);
+      else _session.sessionPassword = password;
+      setState(() {
+        _textController.text = decrypted;
+        _originalTextSnapshot = decrypted; // treat this as saved baseline
+        _isReadOnlyEncrypted = false;
+      });
+      // focus editor
+      Future.delayed(const Duration(milliseconds: 50), () => _focusNode.requestFocus());
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decrypted successfully')));
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
     }
   }
 
   Future<void> _encryptInEditor() async {
-    // If we already have a stored password for this note, use it; otherwise ask for a new password
-    final session = SessionManager();
-    String? pw = widget.noteKey != null ? session.getNotePassword(widget.noteKey) : null;
+    // get a password: either stored or ask user to set one
+    final session = _session;
+    String? pw = widget.noteKey != null ? session.getNotePassword(widget.noteKey) : session.sessionPassword;
     if (pw == null || pw.isEmpty) {
       final p = await _showPasswordDialog(context, "Set password to encrypt note", true);
-      if (p == null || p.isEmpty) {
-        // user cancelled
-        return;
-      }
+      if (p == null || p.isEmpty) return;
       pw = p;
       if (widget.noteKey != null) session.storeNotePassword(widget.noteKey, pw);
-      else session.sessionPassword = pw; // allow prefill even for new note
+      else session.sessionPassword = pw;
     }
-    final encryptedText = EncryptionService.encryptText(_controller.text, pw);
 
-    // update Hive (if it's an existing note)
-    final notesBox = Hive.box<Map>('notesBox');
-    final newNoteData = {
+    final encryptedText = EncryptionService.encryptText(_textController.text, pw);
+
+    final newNote = {
       'content': encryptedText,
       'isEncrypted': true,
-      'filename': (widget.index != null) ? (notesBox.getAt(widget.index!)?['filename'] ?? 'Encrypted Note') : 'Encrypted Note'
+      'title': (_titleController.text.trim().isEmpty) ? null : _titleController.text.trim(),
+      'isTrashed': false,
     };
+
     if (widget.index != null) {
-      await notesBox.putAt(widget.index!, newNoteData);
+      await _notesBox.putAt(widget.index!, newNote);
     } else {
-      // creating a new encrypted note — put at front
-      final List<Map> tempList = [newNoteData];
-      tempList.addAll(notesBox.values);
-      await notesBox.clear();
-      await notesBox.addAll(tempList);
-      // after adding, we don't have widget.noteKey; that's fine — session password held in SessionManager
+      // add to front
+      final List<Map> temp = [Map<String, dynamic>.from(newNote)];
+      temp.addAll(_notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+      await _notesBox.clear();
+      await _notesBox.addAll(temp);
     }
 
+    // After encrypting or re-encrypting, clear the password in memory for this note
+    if (widget.noteKey != null) _session.clearNotePassword(widget.noteKey);
+    else _session.sessionPassword = null;
+
     setState(() {
-      _controller.text = encryptedText;
+      _textController.text = encryptedText;
+      _originalTextSnapshot = encryptedText;
       _isReadOnlyEncrypted = true;
     });
 
-    if (mounted) {
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note encrypted successfully!')));
-    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note encrypted. Password cleared from session; re-enter to decrypt later.')));
   }
 
-  void _saveNote() {
-    final notesBox = Hive.box<Map>('notesBox');
-    final content = _controller.text;
-    final session = SessionManager();
+  Future<void> _saveNote() async {
+    final content = _textController.text;
+    final titleText = _titleController.text.trim().isEmpty ? null : _titleController.text.trim();
+    final sessionPw = widget.noteKey != null ? _session.getNotePassword(widget.noteKey) : _session.sessionPassword;
+    final shouldEncryptOnDisk = sessionPw != null && sessionPw.isNotEmpty;
 
-    // If the note is currently decrypted and we have a per-note pw, store encrypted content on disk
-    final pw = widget.noteKey != null ? session.getNotePassword(widget.noteKey) : session.sessionPassword;
-
-    final isEncryptedOnDisk = (pw != null && pw.isNotEmpty);
-
-    if (isEncryptedOnDisk) {
-      // encrypt content before saving to Hive (disk will hold encrypted content)
-      final encryptedText = EncryptionService.encryptText(content, pw!);
+    if (shouldEncryptOnDisk) {
+      // encrypt content and store encrypted on disk, but keep UI plaintext
+      final encryptedText = EncryptionService.encryptText(content, sessionPw!);
       final newNote = {
         'content': encryptedText,
         'isEncrypted': true,
-        'filename': (widget.index != null) ? (notesBox.getAt(widget.index!)?['filename'] ?? 'Encrypted Note') : 'Encrypted Note'
+        'title': titleText,
+        'isTrashed': false,
       };
+
       if (widget.index != null) {
-        notesBox.putAt(widget.index!, newNote);
+        await _notesBox.putAt(widget.index!, newNote);
       } else {
-        final List<Map> tempList = [newNote];
-        tempList.addAll(notesBox.values);
-        notesBox.clear().then((_) => notesBox.addAll(tempList));
+        final List<Map> temp = [Map<String, dynamic>.from(newNote)];
+        temp.addAll(_notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+        await _notesBox.clear();
+        await _notesBox.addAll(temp);
       }
-      // IMPORTANT: the editor should continue to show the plaintext (per your requirement),
-      // so we DO NOT alter _controller.text or _isReadOnlyEncrypted here.
-      // Also keep the session password in memory so the UI continues to show decrypted view.
+
+      // keep session password in memory so the UI shows decrypted view
+      if (widget.noteKey != null) _session.storeNotePassword(widget.noteKey, sessionPw);
+      else _session.sessionPassword = sessionPw;
+      // keep _textController as plaintext (user remains seeing plaintext)
+      _originalTextSnapshot = content;
     } else {
-      // No password known — save as plaintext
+      // plain save (no encryption)
       final newNote = {
         'content': content,
-        'isEncrypted': content.startsWith("[ENCRYPTED]"),
-        'filename': (widget.index != null) ? (notesBox.getAt(widget.index!)?['filename'] ?? 'Internal Note') : 'Internal Note'
+        'isEncrypted': false,
+        'title': titleText,
+        'isTrashed': false,
       };
       if (widget.index != null) {
-        notesBox.putAt(widget.index!, newNote);
+        await _notesBox.putAt(widget.index!, newNote);
       } else {
-        final List<Map> tempList = [newNote];
-        tempList.addAll(notesBox.values);
-        notesBox.clear().then((_) => notesBox.addAll(tempList));
+        final List<Map> temp = [Map<String, dynamic>.from(newNote)];
+        temp.addAll(_notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+        await _notesBox.clear();
+        await _notesBox.addAll(temp);
       }
+      _originalTextSnapshot = content;
     }
 
-    // If this was an existing note and we saved encrypted content, ensure the session password still exists (so list view can decrypt)
-    if (widget.noteKey != null && pw != null && pw.isNotEmpty) {
-      session.storeNotePassword(widget.noteKey, pw);
+    _originalTitleSnapshot = titleText;
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
     }
 
+    // return to previous screen
     Navigator.pop(context);
   }
 
-  // insert current time at remembered cursor position and keep focus
-  void _insertCurrentTime() {
-    if (_isReadOnlyEncrypted) return; // disabled when read-only
-    if (!_isEditing && !_focusNode.hasFocus) {
-      // even if the focus left, allow insertion at last known selection
-      // but only if last selection exists
-      if (_lastSelection == null) return;
-    }
+  Future<void> _insertCurrentTime() async {
+    if (_isReadOnlyEncrypted) return;
+    if (!_isEditing && _lastSelection == null) return;
     final now = DateTime.now();
-    final formattedTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ";
-
-    final sel = _lastSelection ?? _controller.selection;
-    if (sel == null || !sel.isValid) {
-      // append at end
-      final newText = _controller.text + formattedTime;
+    final formatted = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ";
+    final sel = _lastSelection ?? _textController.selection;
+    if (!sel.isValid) {
+      final newText = _textController.text + formatted;
       final newCursor = newText.length;
       setState(() {
-        _controller.text = newText;
-        _controller.selection = TextSelection.collapsed(offset: newCursor);
+        _textController.text = newText;
+        _textController.selection = TextSelection.collapsed(offset: newCursor);
+        _originalTextSnapshot ??= '';
       });
-      Future.delayed(const Duration(milliseconds: 50), () {
-        _focusNode.requestFocus();
-      });
+      Future.delayed(const Duration(milliseconds: 50), () => _focusNode.requestFocus());
       return;
     }
-
     final start = sel.start;
     final end = sel.end;
-    final text = _controller.text;
-    final newText = text.replaceRange(start, end, formattedTime);
-    final newCursorPos = start + formattedTime.length;
-
+    final text = _textController.text;
+    final newText = text.replaceRange(start, end, formatted);
+    final newPos = start + formatted.length;
     setState(() {
-      _controller.text = newText;
-      _controller.selection = TextSelection.collapsed(offset: newCursorPos);
-      _lastSelection = _controller.selection;
+      _textController.text = newText;
+      _textController.selection = TextSelection.collapsed(offset: newPos);
     });
+    Future.delayed(const Duration(milliseconds: 50), () => _focusNode.requestFocus());
+  }
 
-    // Ensure focus returns to editor and cursor positioned properly
-    Future.delayed(const Duration(milliseconds: 50), () {
-      _focusNode.requestFocus();
-      _controller.selection = TextSelection.collapsed(offset: newCursorPos);
-      _lastSelection = _controller.selection;
-      if (mounted) setState(() {
-        _isEditing = _focusNode.hasFocus;
-      });
-    });
+  Future<void> _exportNote() async {
+    // export to app documents (or ask user)
+    bool isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+    if (!isDesktop) {
+      var status = await Permission.storage.status;
+      if (!status.isGranted) status = await Permission.storage.request();
+      if (!status.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission denied.')));
+        return;
+      }
+    }
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = (_titleController.text.trim().isNotEmpty) ? _titleController.text.trim() : 'note_${DateTime.now().millisecondsSinceEpoch}.txt';
+    final path = p.join(dir.path, filename);
+    try {
+      await File(path).writeAsString(_textController.text);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to $path')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    OutlineInputBorder textBorder = OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4)), borderSide: BorderSide(width: 1, color: Colors.black54));
-    final showDecryptGreen = _isReadOnlyEncrypted;
-
+    final canInsertTime = !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
     return WillPopScope(
-      onWillPop: () async {
-        if (_controller.text.trim().isNotEmpty && (widget.note == null || _controller.text != widget.note)) {
-          final shouldSave = await showDialog<bool>(
-            context: context,
-            builder: (_) => AlertDialog(
-              title: const Text('Save changes?'),
-              content: const Text('Do you want to save this note before leaving?'),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Discard')),
-                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-              ],
-            ),
-          );
-          if (shouldSave == true) _saveNote();
-          return shouldSave != null;
-        }
-        return true;
-      },
+      onWillPop: _onWillPop,
       child: Scaffold(
         appBar: AppBar(
-          // Use the normal back button (do not override leading) so user can navigate back
-          title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
+          title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
+          // default back button will appear
           actions: [
-            // Insert time button: disabled when read-only
             IconButton(
               icon: const Icon(Icons.access_time),
               tooltip: 'Insert Current Time',
-              onPressed: (!_isReadOnlyEncrypted && (_isEditing || _lastSelection != null)) ? _insertCurrentTime : null,
-              color: (!_isReadOnlyEncrypted && (_isEditing || _lastSelection != null)) ? Colors.white : Colors.white24,
+              onPressed: canInsertTime ? _insertCurrentTime : null,
+              color: canInsertTime ? Colors.white : Colors.white24,
             ),
-
-            // Copy button always available (even for encrypted read-only text)
-            IconButton(icon: const Icon(Icons.copy), onPressed: _copyToClipboard, tooltip: 'Copy'),
-
-            // Encrypt/Decrypt button - active in both states
+            IconButton(icon: const Icon(Icons.copy), tooltip: 'Copy', onPressed: _copyToClipboard),
             IconButton(
               icon: const Icon(Icons.enhanced_encryption),
-              onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,
               tooltip: _isReadOnlyEncrypted ? 'Decrypt Note' : 'Encrypt Note',
+              onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,
               color: _isReadOnlyEncrypted ? Colors.green : null,
             ),
-
-            IconButton(icon: const Icon(Icons.system_update_alt), onPressed: _exportNote, tooltip: 'Export Note'),
-
-            // Save button: disabled when showing encrypted read-only text
-            IconButton(icon: const Icon(Icons.save), onPressed: _isReadOnlyEncrypted ? null : _saveNote, color: _isReadOnlyEncrypted ? Colors.white24 : Colors.yellow),
+            IconButton(icon: const Icon(Icons.system_update_alt), tooltip: 'Export note', onPressed: _exportNote),
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: 'Save',
+              onPressed: _isReadOnlyEncrypted ? null : _saveNote,
+              color: _isReadOnlyEncrypted ? Colors.white24 : Colors.yellow,
+            ),
           ],
         ),
         body: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: TextField(
-            controller: _controller,
-            focusNode: _focusNode,
-            maxLines: null,
-            readOnly: _isReadOnlyEncrypted,
-            decoration: InputDecoration(hintText: 'Enter your note', fillColor: Colors.black54, enabledBorder: textBorder, focusedBorder: textBorder),
-            keyboardAppearance: Brightness.dark,
-            style: const TextStyle(color: Colors.white70),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            children: [
+              TextField(
+                controller: _titleController,
+                decoration: const InputDecoration(labelText: 'Title (optional)', hintText: 'Identifying name (not encrypted)'),
+                onChanged: (v) {
+                  setState(() {});
+                },
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: TextField(
+                  controller: _textController,
+                  focusNode: _focusNode,
+                  readOnly: _isReadOnlyEncrypted,
+                  maxLines: null,
+                  decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Enter your note'),
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-
-  Future<void> _exportNote() async {
-    final success = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => ExportNoteDialog(noteContent: _controller.text),
-    );
-    if (success == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File exported successfully!'), duration: Duration(seconds: 2)));
-    }
-  }
 }
 
-// --- UTILITY DIALOGS AND WIDGETS ---
-Future<String?> _showPasswordDialog(BuildContext context, String title, bool allowPrefill) {
-  final passwordController = TextEditingController();
-  final sessionManager = SessionManager();
-  if (allowPrefill && sessionManager.sessionPassword != null) {
-    passwordController.text = sessionManager.sessionPassword!;
-  }
-  return showDialog<String>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(hintText: "Password"), autofocus: true),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text("Cancel")),
-        TextButton(onPressed: () => Navigator.of(context).pop(passwordController.text), child: const Text("OK")),
-      ],
-    ),
-  );
-}
-
-// Export dialog (unchanged logic except uses session defaults)
-class ExportNoteDialog extends StatefulWidget {
-  final String noteContent;
-  const ExportNoteDialog({Key? key, required this.noteContent}) : super(key: key);
+// --- TrashScreen ---
+class TrashScreen extends StatefulWidget {
   @override
-  _ExportNoteDialogState createState() => _ExportNoteDialogState();
+  _TrashScreenState createState() => _TrashScreenState();
 }
 
-class _ExportNoteDialogState extends State<ExportNoteDialog> {
-  final _filenameController = TextEditingController();
-  final _sessionManager = SessionManager();
+class _TrashScreenState extends State<TrashScreen> {
+  final Box<Map> _notesBox = Hive.box<Map>('notesBox');
+  final Map<dynamic, bool> _selected = {};
 
-  bool _isSaving = false;
-  String? _errorMessage;
-  String _currentPath = "Loading path...";
-  bool get _isDesktop => Platform.isLinux || Platform.isWindows || Platform.isMacOS;
-
-  @override
-  void initState() {
-    super.initState();
-    _filenameController.text = '${DateTime.now().toIso8601String().replaceAll(":", "-").replaceAll(".", "-")}.txt';
-    _initializePaths();
-  }
-
-  Future<void> _initializePaths() async {
-    if (_sessionManager.defaultExportPath == null) {
-      Directory? dir;
-      if (_isDesktop) {
-        dir = await getDownloadsDirectory();
-      } else {
-        dir = await getExternalStorageDirectory();
-      }
-      _session_manager_defaultPath_fallback:
-      _sessionManager.defaultExportPath = dir?.path ?? (await getApplicationDocumentsDirectory()).path;
+  List<int> _trashedIndices() {
+    final res = <int>[];
+    for (int i = 0; i < _notesBox.length; i++) {
+      final n = _notesBox.getAt(i)!;
+      final isTrashed = n['isTrashed'] ?? false;
+      if (isTrashed) res.add(i);
     }
-    if (mounted) setState(() => _currentPath = _sessionManager.lastExportPath ?? _sessionManager.defaultExportPath!);
+    return res;
   }
 
-  Future<void> _doExport() async {
+  void _toggleSelect(dynamic key) {
     setState(() {
-      _isSaving = true;
-      _errorMessage = null;
+      _selected[key] = !(_selected[key] ?? false);
+      if (_selected[key] == false) _selected.remove(key);
     });
+  }
 
-    final filename = _filenameController.text.trim();
-    if (filename.isEmpty) {
-      setState(() {
-        _errorMessage = "Filename cannot be empty.";
-        _isSaving = false;
-      });
-      return;
+  Future<void> _restoreSelected() async {
+    final keys = List<dynamic>.from(_selected.keys);
+    for (final k in keys) {
+      final n = Map<String, dynamic>.from(await _notesBox.get(k) as Map);
+      n['isTrashed'] = false;
+      await _notesBox.put(k, n);
+      _selected.remove(k);
     }
+    if (mounted) setState(() {});
+  }
 
-    try {
-      final finalPath = p.join(_currentPath, filename);
+  Future<void> _permanentlyDeleteSelected() async {
+    final keys = List<dynamic>.from(_selected.keys);
+    // Deleting keys needs care: delete by key
+    for (final k in keys) {
+      await _notesBox.delete(k);
+      _selected.remove(k);
+    }
+    if (mounted) setState(() {});
+  }
 
-      if (!_isDesktop) {
-        var status = await Permission.storage.status;
-        if (!status.isGranted) status = await Permission.storage.request();
-        if (!status.isGranted) throw "Storage permission was denied.";
-      }
+  @override
+  Widget build(BuildContext context) {
+    final trashed = _trashedIndices();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Trash'),
+        actions: [
+          TextButton(
+            onPressed: _selected.isNotEmpty ? _restoreSelected : null,
+            child: const Text('Restore', style: TextStyle(color: Colors.white)),
+          ),
+          TextButton(
+            onPressed: _selected.isNotEmpty ? _permanentlyDeleteSelected : null,
+            child: const Text('Delete permanently', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
+      ),
+      body: ValueListenableBuilder(
+        valueListenable: _notesBox.listenable(),
+        builder: (context, Box<Map> box, _) {
+          final list = _trashedIndices();
+          if (list.isEmpty) return const Center(child: Text('Trash is empty.'));
+          return ListView.builder(
+            itemCount: list.length,
+            itemBuilder: (context, idx) {
+              final i = list[idx];
+              final note = box.getAt(i)!;
+              final key = box.keyAt(i);
+              final title = (note['title'] as String?) ?? '';
+              final snippet = (note['isEncrypted'] ?? false) ? '🔒 Encrypted' : (note['content'] as String).split('\n').first;
+              final checked = _selected.containsKey(key);
+              return CheckboxListTile(
+                value: checked,
+                onChanged: (_) => _toggleSelect(key),
+                title: Text(title.isNotEmpty ? title : snippet, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(snippet, maxLines: 1, overflow: TextOverflow.ellipsis),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
 
-      final file = File(finalPath);
-      await file.parent.create(recursive: true);
-      await file.writeAsString(widget.noteContent);
+// --- HelpScreen ---
+class HelpScreen extends StatelessWidget {
+  final List<Map<String, String>> items = [
+    {'icon': 'add', 'explain': 'Add a new note'},
+    {'icon': 'delete', 'explain': 'Delete (moves to Trash; use Undo to restore). No confirmation.'},
+    {'icon': 'lock', 'explain': 'Encrypt all decrypted notes (clears session passwords)'},
+    {'icon': 'download_outlined', 'explain': 'Export all notes to app documents folder'},
+    {'icon': 'present_to_all', 'explain': 'Import note(s) from .txt files'},
+    {'icon': 'access_time', 'explain': 'Insert current time into note (enabled when editing)'},
+    {'icon': 'copy', 'explain': 'Copy note contents to clipboard'},
+    {'icon': 'enhanced_encryption', 'explain': 'Encrypt / Decrypt the current note. Encrypted content remains unreadable unless decrypted with password.'},
+    {'icon': 'system_update_alt', 'explain': 'Export current note to a file'},
+    {'icon': 'save', 'explain': 'Save note (when editing). If a password is stored in session, saving will persist encrypted content on disk but keep UI plaintext until re-encrypted or app restart.'},
+  ];
 
-      _sessionManager.lastExportPath = p.dirname(finalPath);
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      setState(() {
-        _errorMessage = "Failed to save file: ${e.toString()}\n\nTry selecting a different folder or check permissions.";
-        _isSaving = false;
-      });
+  IconData _iconFromName(String name) {
+    switch (name) {
+      case 'add':
+        return Icons.add;
+      case 'delete':
+        return Icons.delete;
+      case 'lock':
+        return Icons.lock;
+      case 'download_outlined':
+        return Icons.download_outlined;
+      case 'present_to_all':
+        return Icons.present_to_all;
+      case 'access_time':
+        return Icons.access_time;
+      case 'copy':
+        return Icons.copy;
+      case 'enhanced_encryption':
+        return Icons.enhanced_encryption;
+      case 'system_update_alt':
+        return Icons.system_update_alt;
+      case 'save':
+        return Icons.save;
+      default:
+        return Icons.help_outline;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Export Note'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Save location:', style: Theme.of(context).textTheme.bodySmall),
-            Text(_currentPath, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white54)),
-            const SizedBox(height: 16),
-            TextField(controller: _filenameController, decoration: const InputDecoration(labelText: 'Filename')),
-            if (_isDesktop)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton(
-                    onPressed: () async {
-                      final selectedPath = await FilePicker.platform.getDirectoryPath();
-                      if (selectedPath != null && mounted) setState(() => _currentPath = selectedPath);
-                    },
-                    child: const Text('Change Folder'),
-                  ),
-                  TextButton(onPressed: () => setState(() => _currentPath = _sessionManager.defaultExportPath!), child: const Text('Reset')),
-                ],
-              ),
-            if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 16.0),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8.0),
-                  color: Colors.red[900],
-                  child: Text(_errorMessage!, style: const TextStyle(color: Colors.white)),
-                ),
-              ),
-          ],
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Help'),
       ),
-      actions: [
-        TextButton(onPressed: _isSaving ? null : () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-        ElevatedButton(
-          onPressed: _isSaving ? null : _doExport,
-          child: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Export'),
-        ),
-      ],
+      body: ListView.builder(
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final it = items[i];
+          return ListTile(
+            leading: Icon(_iconFromName(it['icon']!)),
+            title: Text(it['icon']!),
+            subtitle: Text(it['explain']!),
+          );
+        },
+      ),
     );
   }
+}
+
+// --- Utility password dialog ---
+Future<String?> _showPasswordDialog(BuildContext context, String title, bool allowPrefill) {
+  final controller = TextEditingController();
+  final session = SessionManager();
+  if (allowPrefill && session.sessionPassword != null) controller.text = session.sessionPassword!;
+  return showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: controller,
+        decoration: const InputDecoration(hintText: 'Password'),
+        obscureText: true,
+        autofocus: true,
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('OK')),
+      ],
+    ),
+  );
 }
