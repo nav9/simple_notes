@@ -232,24 +232,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
     }
   }
 
-  Future<void> _handleEncryptedNoteTap(int index, Map noteData) async {
-    // Ask for password and decrypt, then store decrypted text in cache and store password in session manager
-    final password = await _showPasswordDialog(context, "Enter password for '${noteData['filename']}'", false);
-    if (password != null && password.isNotEmpty) {
-      final decryptedContent = EncryptionService.decryptText(noteData['content'], password);
-      if (decryptedContent != null) {
-        final key = notesBox.keyAt(index);
-        if (mounted) {
-          _decryptedNotesCache[key] = decryptedContent;
-          SessionManager().storeNotePassword(key, password);
-          setState(() {});
-        }
-      } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')));
-      }
-    }
-  }
-
+  // NOTE: tapping an encrypted note no longer forces a password prompt.
+  // Instead we open the EditNoteScreen with the encrypted text shown read-only.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -289,7 +273,25 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
               String displayContent;
               if (isEncrypted) {
-                displayContent = _decryptedNotesCache[key] ?? "🔒 Encrypted: ${noteData['filename']}";
+                // If we have plaintext in local cache use it
+                if (_decryptedNotesCache.containsKey(key)) {
+                  displayContent = _decryptedNotesCache[key]!;
+                } else {
+                  // If there's a session password for this note, try to decrypt on-the-fly and cache it
+                  final sessionPw = SessionManager().getNotePassword(key);
+                  if (sessionPw != null && sessionPw.isNotEmpty) {
+                    final decrypted = EncryptionService.decryptText(noteData['content'], sessionPw);
+                    if (decrypted != null) {
+                      _decryptedNotesCache[key] = decrypted;
+                      displayContent = decrypted;
+                    } else {
+                      // cannot decrypt with stored pw (maybe wrong) -> show locked
+                      displayContent = "🔒 Encrypted: ${noteData['filename']}";
+                    }
+                  } else {
+                    displayContent = "🔒 Encrypted: ${noteData['filename']}";
+                  }
+                }
               } else {
                 displayContent = noteData['content'];
               }
@@ -299,17 +301,22 @@ class _NotesListScreenState extends State<NotesListScreen> {
                   title: Text(displayContent, style: const TextStyle(color: Colors.white38), maxLines: 3, overflow: TextOverflow.ellipsis),
                   onTap: () {
                     final key = box.keyAt(index);
-                    if (isEncrypted && !_decryptedNotesCache.containsKey(key)) {
-                      _handleEncryptedNoteTap(index, noteData);
-                    } else {
-                      final content = _decryptedNotesCache[key] ?? noteData['content'];
-                      // pass the key to EditNoteScreen so we can manage per-note session passwords
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content)))
-                          .then((_) {
-                        // After returning, refresh state (in case edits changed encryption)
-                        if (mounted) setState(() {});
-                      });
-                    }
+                    final content = noteData['content'];
+                    final isEncryptedNow = noteData['isEncrypted'] ?? false;
+
+                    // Open editor: if encrypted -> open in read-only encrypted view (no prompt).
+                    // If decrypted in memory or not encrypted -> open editable view.
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => EditNoteScreen(
+                                index: index,
+                                noteKey: key,
+                                note: content,
+                                initialIsEncrypted: isEncryptedNow))).then((_) {
+                      // After returning, refresh state (in case edits changed encryption)
+                      if (mounted) setState(() {});
+                    });
                   },
                   leading: IconButton(icon: const Icon(Icons.delete), onPressed: () => _deleteNoteConfirmation(index), color: Colors.red[900]),
                 ),
@@ -335,7 +342,8 @@ class EditNoteScreen extends StatefulWidget {
   final int? index; // null for new note
   final dynamic? noteKey; // Hive key for existing notes
   final String? note; // content (could be encrypted or decrypted depending on context)
-  EditNoteScreen({this.index, this.noteKey, this.note});
+  final bool initialIsEncrypted;
+  EditNoteScreen({this.index, this.noteKey, this.note, this.initialIsEncrypted = false});
   @override
   _EditNoteScreenState createState() => _EditNoteScreenState();
 }
@@ -352,14 +360,28 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     super.initState();
 
     _controller = TextEditingController(text: widget.note ?? '');
-    // Determine read-only encrypted state: if the content begins with [ENCRYPTED] and there's no decrypted session cache for this key
-    final isEncryptedContent = (_controller.text.startsWith('[ENCRYPTED]'));
+    // Determine read-only encrypted state: if the content begins with [ENCRYPTED] and there's no decrypted session password
+    final isEncryptedContent = (_controller.text.startsWith('[ENCRYPTED]')) || widget.initialIsEncrypted;
     final sessionPw = SessionManager().getNotePassword(widget.noteKey);
     if (isEncryptedContent && sessionPw == null) {
       // Show as read-only encrypted until user decrypts
       _isReadOnlyEncrypted = true;
+      // ensure we show the encrypted payload, not an emptied text
+      // (_controller already has widget.note)
     } else {
-      _isReadOnlyEncrypted = false;
+      // If content is encrypted but session pw exists, decrypt now for editing view
+      if (isEncryptedContent && sessionPw != null) {
+        final decrypted = EncryptionService.decryptText(_controller.text, sessionPw);
+        if (decrypted != null) {
+          _controller.text = decrypted;
+          _isReadOnlyEncrypted = false;
+        } else {
+          // cannot decrypt with stored pw -> keep read-only encrypted
+          _isReadOnlyEncrypted = true;
+        }
+      } else {
+        _isReadOnlyEncrypted = false;
+      }
     }
 
     // Auto-focus new notes
@@ -432,12 +454,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       }
       pw = p;
       if (widget.noteKey != null) session.storeNotePassword(widget.noteKey, pw);
+      else session.sessionPassword = pw; // allow prefill even for new note
     }
     final encryptedText = EncryptionService.encryptText(_controller.text, pw);
-    setState(() {
-      _controller.text = encryptedText;
-      _isReadOnlyEncrypted = true;
-    });
+
     // update Hive (if it's an existing note)
     final notesBox = Hive.box<Map>('notesBox');
     final newNoteData = {
@@ -453,9 +473,14 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       tempList.addAll(notesBox.values);
       await notesBox.clear();
       await notesBox.addAll(tempList);
+      // after adding, we don't have widget.noteKey; that's fine — session password held in SessionManager
     }
 
-    // Keep password in session (already stored) — do not write to disk
+    setState(() {
+      _controller.text = encryptedText;
+      _isReadOnlyEncrypted = true;
+    });
+
     if (mounted) {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note encrypted successfully!')));
@@ -465,24 +490,58 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   void _saveNote() {
     final notesBox = Hive.box<Map>('notesBox');
     final content = _controller.text;
-    final isEncrypted = content.startsWith("[ENCRYPTED]");
-    final newNote = {
-      'content': content,
-      'isEncrypted': isEncrypted,
-      'filename': isEncrypted ? 'Encrypted Note' : 'Internal Note'
-    };
-    if (widget.index != null) {
-      notesBox.putAt(widget.index!, newNote);
+    final session = SessionManager();
+
+    // If the note is currently decrypted and we have a per-note pw, store encrypted content on disk
+    final pw = widget.noteKey != null ? session.getNotePassword(widget.noteKey) : session.sessionPassword;
+
+    final isEncryptedOnDisk = (pw != null && pw.isNotEmpty);
+
+    if (isEncryptedOnDisk) {
+      // encrypt content before saving to Hive (disk will hold encrypted content)
+      final encryptedText = EncryptionService.encryptText(content, pw!);
+      final newNote = {
+        'content': encryptedText,
+        'isEncrypted': true,
+        'filename': (widget.index != null) ? (notesBox.getAt(widget.index!)?['filename'] ?? 'Encrypted Note') : 'Encrypted Note'
+      };
+      if (widget.index != null) {
+        notesBox.putAt(widget.index!, newNote);
+      } else {
+        final List<Map> tempList = [newNote];
+        tempList.addAll(notesBox.values);
+        notesBox.clear().then((_) => notesBox.addAll(tempList));
+      }
+      // IMPORTANT: the editor should continue to show the plaintext (per your requirement),
+      // so we DO NOT alter _controller.text or _isReadOnlyEncrypted here.
+      // Also keep the session password in memory so the UI continues to show decrypted view.
     } else {
-      final List<Map> tempList = [newNote];
-      tempList.addAll(notesBox.values);
-      notesBox.clear().then((_) => notesBox.addAll(tempList));
+      // No password known — save as plaintext
+      final newNote = {
+        'content': content,
+        'isEncrypted': content.startsWith("[ENCRYPTED]"),
+        'filename': (widget.index != null) ? (notesBox.getAt(widget.index!)?['filename'] ?? 'Internal Note') : 'Internal Note'
+      };
+      if (widget.index != null) {
+        notesBox.putAt(widget.index!, newNote);
+      } else {
+        final List<Map> tempList = [newNote];
+        tempList.addAll(notesBox.values);
+        notesBox.clear().then((_) => notesBox.addAll(tempList));
+      }
     }
+
+    // If this was an existing note and we saved encrypted content, ensure the session password still exists (so list view can decrypt)
+    if (widget.noteKey != null && pw != null && pw.isNotEmpty) {
+      session.storeNotePassword(widget.noteKey, pw);
+    }
+
     Navigator.pop(context);
   }
 
   // insert current time at remembered cursor position and keep focus
   void _insertCurrentTime() {
+    if (_isReadOnlyEncrypted) return; // disabled when read-only
     if (!_isEditing && !_focusNode.hasFocus) {
       // even if the focus left, allow insertion at last known selection
       // but only if last selection exists
@@ -555,19 +614,21 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          // Insert time on left (leading)
-          leading: IconButton(
-            icon: const Icon(Icons.access_time),
-            tooltip: 'Insert Current Time',
-            onPressed: (_isEditing || _lastSelection != null) ? _insertCurrentTime : null,
-            color: (_isEditing || _lastSelection != null) ? Colors.white : Colors.white24,
-          ),
+          // Use the normal back button (do not override leading) so user can navigate back
           title: const Text('Edit Note', style: TextStyle(color: Colors.white24)),
           actions: [
-            // Copy button always available
+            // Insert time button: disabled when read-only
+            IconButton(
+              icon: const Icon(Icons.access_time),
+              tooltip: 'Insert Current Time',
+              onPressed: (!_isReadOnlyEncrypted && (_isEditing || _lastSelection != null)) ? _insertCurrentTime : null,
+              color: (!_isReadOnlyEncrypted && (_isEditing || _lastSelection != null)) ? Colors.white : Colors.white24,
+            ),
+
+            // Copy button always available (even for encrypted read-only text)
             IconButton(icon: const Icon(Icons.copy), onPressed: _copyToClipboard, tooltip: 'Copy'),
 
-            // If the note is encrypted and read-only, show green decrypt button
+            // Encrypt/Decrypt button - active in both states
             IconButton(
               icon: const Icon(Icons.enhanced_encryption),
               onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,
@@ -576,7 +637,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
             ),
 
             IconButton(icon: const Icon(Icons.system_update_alt), onPressed: _exportNote, tooltip: 'Export Note'),
-            IconButton(icon: const Icon(Icons.save), onPressed: _saveNote, color: Colors.yellow),
+
+            // Save button: disabled when showing encrypted read-only text
+            IconButton(icon: const Icon(Icons.save), onPressed: _isReadOnlyEncrypted ? null : _saveNote, color: _isReadOnlyEncrypted ? Colors.white24 : Colors.yellow),
           ],
         ),
         body: Padding(
@@ -659,6 +722,7 @@ class _ExportNoteDialogState extends State<ExportNoteDialog> {
       } else {
         dir = await getExternalStorageDirectory();
       }
+      _session_manager_defaultPath_fallback:
       _sessionManager.defaultExportPath = dir?.path ?? (await getApplicationDocumentsDirectory()).path;
     }
     if (mounted) setState(() => _currentPath = _sessionManager.lastExportPath ?? _sessionManager.defaultExportPath!);
