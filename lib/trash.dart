@@ -11,18 +11,17 @@ class _TrashScreenState extends State<TrashScreen> {
   final Box<Map> _notesBox = Hive.box<Map>('notesBox');
   final Map<dynamic, bool> _selected = {};
 
-  List<dynamic> _trashedKeys() {
-    final res = <dynamic>[];
+  List<int> _trashedIndices() {
+    final res = <int>[];
     for (int i = 0; i < _notesBox.length; i++) {
-      final key = _notesBox.keyAt(i);
       final n = _notesBox.getAt(i)!;
       final isTrashed = n['isTrashed'] ?? false;
-      if (isTrashed) res.add(key);
+      if (isTrashed) res.add(i);
     }
     return res;
   }
 
-  void _toggleSelect(dynamic key) {
+  void _toggle(dynamic key) {
     setState(() {
       _selected[key] = !(_selected[key] ?? false);
       if (_selected[key] == false) _selected.remove(key);
@@ -40,7 +39,7 @@ class _TrashScreenState extends State<TrashScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _permanentlyDeleteSelected() async {
+  Future<void> _deleteSelected() async {
     final keys = List<dynamic>.from(_selected.keys);
     for (final k in keys) {
       await _notesBox.delete(k);
@@ -51,7 +50,7 @@ class _TrashScreenState extends State<TrashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final keys = _trashedKeys();
+    final trashed = _trashedIndices();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trash'),
@@ -61,7 +60,7 @@ class _TrashScreenState extends State<TrashScreen> {
             child: const Text('Restore', style: TextStyle(color: Colors.white)),
           ),
           TextButton(
-            onPressed: _selected.isNotEmpty ? _permanentlyDeleteSelected : null,
+            onPressed: _selected.isNotEmpty ? _deleteSelected : null,
             child: const Text('Delete permanently', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
@@ -69,19 +68,20 @@ class _TrashScreenState extends State<TrashScreen> {
       body: ValueListenableBuilder(
         valueListenable: _notesBox.listenable(),
         builder: (context, Box<Map> box, _) {
-          final keys = _trashedKeys();
-          if (keys.isEmpty) return const Center(child: Text('Trash is empty.'));
+          final list = _trashedIndices();
+          if (list.isEmpty) return const Center(child: Text('Trash is empty.'));
           return ListView.builder(
-            itemCount: keys.length,
+            itemCount: list.length,
             itemBuilder: (context, idx) {
-              final key = keys[idx];
-              final note = box.get(key)!;
+              final i = list[idx];
+              final note = box.getAt(i)!;
+              final key = box.keyAt(i);
               final title = (note['title'] as String?) ?? '';
               final snippet = (note['isEncrypted'] ?? false) ? '🔒 Encrypted' : (note['content'] as String).split('\n').first;
               final checked = _selected.containsKey(key);
               return CheckboxListTile(
                 value: checked,
-                onChanged: (_) => _toggleSelect(key),
+                onChanged: (_) => _toggle(key),
                 title: Text(title.isNotEmpty ? title : snippet, maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(snippet, maxLines: 1, overflow: TextOverflow.ellipsis),
               );

@@ -1,11 +1,22 @@
 // lib/search_replace.dart
 import 'package:flutter/material.dart';
 
+/// Small result type (optional) returned by the sheet if the caller wants a final jump-to
+class SearchReplaceResult {
+  final TextRange? jumpTo;
+  SearchReplaceResult({this.jumpTo});
+}
+
 class SearchReplaceSheet extends StatefulWidget {
   final TextEditingController controller;
   final ValueNotifier<List<TextRange>> highlightNotifier;
+  final ValueNotifier<int>? currentMatchNotifier; // optional; when set, sheet updates it
 
-  SearchReplaceSheet({required this.controller, required this.highlightNotifier});
+  SearchReplaceSheet({
+    required this.controller,
+    required this.highlightNotifier,
+    this.currentMatchNotifier,
+  });
 
   @override
   _SearchReplaceSheetState createState() => _SearchReplaceSheetState();
@@ -18,39 +29,55 @@ class _SearchReplaceSheetState extends State<SearchReplaceSheet> {
   bool _wholeWord = false;
 
   List<RegExpMatch> _matches = [];
-  int _currentMatchIndex = -1;
+  int _currentIndex = -1;
 
   RegExp _makeRegex(String pattern) {
-    if (pattern.isEmpty) return RegExp(r'(?!)'); // matches nothing
+    if (pattern.isEmpty) return RegExp(r'(?!)');
     final escaped = RegExp.escape(pattern);
     final expr = _wholeWord ? r'\b' + escaped + r'\b' : escaped;
     return RegExp(expr, caseSensitive: _caseSensitive, multiLine: true);
   }
 
-  void _updateMatches() {
-    final text = widget.controller.text;
+  void _recomputeMatches({bool keepIndexIfPossible = true}) {
     final patt = _findController.text;
     if (patt.isEmpty) {
       _matches = [];
-      _currentMatchIndex = -1;
+      _currentIndex = -1;
       widget.highlightNotifier.value = [];
+      _notifyCurrentMatch();
       setState(() {});
       return;
     }
     final reg = _makeRegex(patt);
+    final text = widget.controller.text;
     final matches = reg.allMatches(text).toList();
-    _matches = matches;
-    if (_matches.isNotEmpty) {
-      // set current to 0 if it was -1
-      if (_currentMatchIndex < 0 || _currentMatchIndex >= _matches.length) {
-        _currentMatchIndex = 0;
-      }
-      _applyHighlights();
-      _selectMatchAt(_currentMatchIndex);
-    } else {
-      _currentMatchIndex = -1;
-      widget.highlightNotifier.value = [];
+    // remember old position's matched substring so we can keep selection near same match if possible
+    String? oldMatchText;
+    if (_currentIndex >= 0 && _currentIndex < _matches.length) {
+      oldMatchText = _matches[_currentIndex].group(0);
     }
+    _matches = matches;
+
+    if (_matches.isEmpty) {
+      _currentIndex = -1;
+      widget.highlightNotifier.value = [];
+      _notifyCurrentMatch();
+      setState(() {});
+      return;
+    }
+
+    if (keepIndexIfPossible && oldMatchText != null) {
+      // try to keep pointing to the nearest same-text match
+      int newIdx = _matches.indexWhere((m) => m.group(0) == oldMatchText);
+      if (newIdx == -1) newIdx = 0;
+      _currentIndex = newIdx;
+    } else {
+      _currentIndex = 0;
+    }
+
+    _applyHighlights();
+    _notifyCurrentMatch();
+    _selectCurrentMatchInController();
     setState(() {});
   }
 
@@ -62,77 +89,49 @@ class _SearchReplaceSheetState extends State<SearchReplaceSheet> {
     widget.highlightNotifier.value = ranges;
   }
 
-  void _selectMatchAt(int idx) {
-    if (idx < 0 || idx >= _matches.length) return;
-    final m = _matches[idx];
-    widget.controller.selection = TextSelection(baseOffset: m.start, extentOffset: m.end);
-    setState(() {
-      _currentMatchIndex = idx;
-    });
-  }
-
-  void _findNext() {
-    _updateMatchesIfNeeded();
-    if (_matches.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No matches')));
-      return;
+  void _notifyCurrentMatch() {
+    if (widget.currentMatchNotifier != null) {
+      widget.currentMatchNotifier!.value = _currentIndex;
     }
-    _currentMatchIndex = (_currentMatchIndex + 1) % _matches.length;
-    _selectMatchAt(_currentMatchIndex);
   }
 
-  void _findPrev() {
-    _updateMatchesIfNeeded();
-    if (_matches.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No matches')));
-      return;
+  void _selectCurrentMatchInController() {
+    if (_currentIndex >= 0 && _currentIndex < _matches.length) {
+      final m = _matches[_currentIndex];
+      widget.controller.selection = TextSelection(baseOffset: m.start, extentOffset: m.end);
     }
-    _currentMatchIndex = (_currentMatchIndex - 1);
-    if (_currentMatchIndex < 0) _currentMatchIndex = _matches.length - 1;
-    _selectMatchAt(_currentMatchIndex);
   }
 
-  void _updateMatchesIfNeeded() {
-    final patt = _findController.text;
-    if (patt.isEmpty) return;
-    _updateMatches();
+  void _next() {
+    if (_matches.isEmpty) return;
+    _currentIndex = (_currentIndex + 1) % _matches.length;
+    _applyHighlights();
+    _notifyCurrentMatch();
+    _selectCurrentMatchInController();
+    setState(() {});
   }
 
-  // Replace current selection (if it matches), then automatically move to next
+  void _prev() {
+    if (_matches.isEmpty) return;
+    _currentIndex = (_currentIndex - 1);
+    if (_currentIndex < 0) _currentIndex = _matches.length - 1;
+    _applyHighlights();
+    _notifyCurrentMatch();
+    _selectCurrentMatchInController();
+    setState(() {});
+  }
+
   void _replaceCurrentAndNext() {
-    if (_matches.isEmpty || _currentMatchIndex == -1) {
-      _findNext();
-      return;
-    }
-    final match = _matches[_currentMatchIndex];
-    final sel = widget.controller.selection;
-    // If current selection corresponds to this match, replace it; otherwise select this match first
-    final matchesSel = (sel.start == match.start && sel.end == match.end);
-    if (!matchesSel) {
-      _selectMatchAt(_currentMatchIndex);
-    }
+    if (_matches.isEmpty || _currentIndex == -1) return;
+    final m = _matches[_currentIndex];
+    final replacement = _replaceController.text;
+    final full = widget.controller.text;
+    final newText = full.replaceRange(m.start, m.end, replacement);
+    widget.controller.text = newText;
 
-    final newTextPiece = _replaceController.text;
-    final fullText = widget.controller.text;
-    final newFull = fullText.replaceRange(match.start, match.end, newTextPiece);
-    widget.controller.text = newFull;
-
-    // After replacement, recompute matches and move to next instance (which may be at same index)
-    final nextIndex = _currentMatchIndex; // try same index
-    _updateMatches();
-    if (_matches.isEmpty) {
-      _currentMatchIndex = -1;
-      widget.highlightNotifier.value = [];
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Replaced — no more matches')));
-      setState(() {});
-      return;
-    }
-
-    if (nextIndex >= 0 && nextIndex < _matches.length) {
-      _selectMatchAt(nextIndex);
-    } else {
-      _selectMatchAt(0);
-    }
+    // recompute and try to keep index
+    _recomputeMatches(keepIndexIfPossible: true);
+    // after recompute, currentIndex already set and controller selection placed
   }
 
   void _replaceAll() {
@@ -141,8 +140,7 @@ class _SearchReplaceSheetState extends State<SearchReplaceSheet> {
     final reg = _makeRegex(patt);
     final replaced = widget.controller.text.replaceAll(reg, _replaceController.text);
     widget.controller.text = replaced;
-    _updateMatches();
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All occurrences replaced')));
+    _recomputeMatches(keepIndexIfPossible: false);
   }
 
   @override
@@ -155,40 +153,63 @@ class _SearchReplaceSheetState extends State<SearchReplaceSheet> {
   @override
   Widget build(BuildContext context) {
     final total = _matches.length;
-    final current = (_currentMatchIndex == -1) ? 0 : (_currentMatchIndex + 1);
+    final current = (_currentIndex == -1) ? 0 : (_currentIndex + 1);
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.all(12),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(children: [
-            Expanded(child: TextField(controller: _findController, decoration: const InputDecoration(labelText: 'Find'), onChanged: (_) => _updateMatches())),
-            const SizedBox(width: 8),
-            ElevatedButton(onPressed: _findPrev, child: const Text('Prev')),
-            const SizedBox(width: 8),
-            ElevatedButton(onPressed: _findNext, child: const Text('Next')),
-          ]),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8.0),
-              child: Text('Matches: $current / $total', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _findController,
+                  decoration: const InputDecoration(labelText: 'Find'),
+                  onChanged: (_) => _recomputeMatches(),
+                  onSubmitted: (_) => _recomputeMatches(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _prev, child: const Text('Prev')),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _next, child: const Text('Next')),
+            ]),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Text('Matches: $current / $total', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          TextField(controller: _replaceController, decoration: const InputDecoration(labelText: 'Replace with')),
-          Row(children: [
-            Checkbox(value: _caseSensitive, onChanged: (v) => setState(() { _caseSensitive = v ?? false; _updateMatches(); })),
-            const Text('Case sensitive'),
-            const SizedBox(width: 16),
-            Checkbox(value: _wholeWord, onChanged: (v) => setState(() { _wholeWord = v ?? false; _updateMatches(); })),
-            const Text('Whole word'),
-            const Spacer(),
-            ElevatedButton(onPressed: _replaceCurrentAndNext, child: const Text('Replace')),
-            const SizedBox(width: 8),
-            ElevatedButton(onPressed: _replaceAll, child: const Text('Replace all')),
-          ]),
-        ]),
+            const SizedBox(height: 8),
+            TextField(controller: _replaceController, decoration: const InputDecoration(labelText: 'Replace with')),
+            Row(children: [
+              Checkbox(value: _caseSensitive, onChanged: (v) => setState(() { _caseSensitive = v ?? false; _recomputeMatches(); })),
+              const Text('Case sensitive'),
+              const SizedBox(width: 16),
+              Checkbox(value: _wholeWord, onChanged: (v) => setState(() { _wholeWord = v ?? false; _recomputeMatches(); })),
+              const Text('Whole word'),
+              const Spacer(),
+              ElevatedButton(onPressed: _replaceCurrentAndNext, child: const Text('Replace')),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _replaceAll, child: const Text('Replace all')),
+              const SizedBox(width: 8),
+              TextButton(
+                onPressed: () {
+                  // return current match range if exists, so editor can scroll to it one last time
+                  TextRange? ret;
+                  if (_currentIndex >= 0 && _currentIndex < _matches.length) {
+                    final m = _matches[_currentIndex];
+                    ret = TextRange(start: m.start, end: m.end);
+                  }
+                  Navigator.of(context).pop(SearchReplaceResult(jumpTo: ret));
+                },
+                child: const Text('Close'),
+              ),
+            ]),
+          ],
+        ),
       ),
     );
   }

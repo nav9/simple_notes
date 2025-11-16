@@ -69,8 +69,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
   // Move selected notes to trash
   Future<void> _moveSelectedToTrash() async {
     try {
-      for (final key in List<dynamic>.from(_selectedKeys)) {
-        // find index of key
+      final keys = List<dynamic>.from(_selectedKeys);
+      for (final key in keys) {
         final idx = _indexOfKey(key);
         if (idx == -1) continue;
         final note = notesBox.get(key)!;
@@ -80,7 +80,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
         _decryptedNotesCache.remove(key);
         _session.clearNotePassword(key);
       }
-      // show top snackbar with UNDO for the last moved note (simpler)
       final snackBar = SnackBar(
         content: const Text('Selected notes moved to Trash.'),
         duration: const Duration(seconds: 3),
@@ -138,7 +137,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
   // Duplicate selected notes
   Future<void> _duplicateSelected() async {
     try {
-      // We'll duplicate in the order of keys (to keep predictable).
       final keysToDup = List<dynamic>.from(_selectedKeys);
       for (final key in keysToDup) {
         final note = await notesBox.get(key) as Map?;
@@ -146,37 +144,28 @@ class _NotesListScreenState extends State<NotesListScreen> {
         final title = (note['title'] as String?) ?? '';
         final isEncrypted = (note['isEncrypted'] ?? false) as bool;
 
-        // figure out next suffix
         final baseTitle = title.isNotEmpty ? title : 'note';
         final nextTitle = _nextCopyTitle(baseTitle);
 
         if (isEncrypted) {
-          // Duplicate encrypted — keep encryption properties and content
           final newNote = {
             'content': note['content'],
             'isEncrypted': true,
             'title': nextTitle,
             'isTrashed': false,
           };
-          // add to front
           final List<Map> tempList = [Map<String, dynamic>.from(newNote)];
           tempList.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
           await notesBox.clear();
           await notesBox.addAll(tempList);
-
-          // No session password for duplicate unless we can derive one (we don't)
         } else {
-          // If the original is decrypted in session, duplicate as plaintext (not encrypted)
           final sessionPw = _session.getNotePassword(key);
           String? plain;
           if (sessionPw != null && sessionPw.isNotEmpty) {
-            // original may be encrypted on disk but decrypted in session;
-            // attempt to decrypt original content with pw; if fails we'll fallback to stored content
             final tryDec = EncryptionService.decryptText(note['content'] as String, sessionPw);
             if (tryDec != null) plain = tryDec;
             else plain = note['content'] as String;
           } else {
-            // original is not decrypted-in-session — copy its visible content (which is plaintext)
             plain = note['content'] as String;
           }
 
@@ -191,9 +180,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
           await notesBox.clear();
           await notesBox.addAll(tempList);
         }
-      } // end for
+      }
 
-      // After duplication, clear selection
       _selectedKeys.clear();
       if (mounted) setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicated selected notes')));
@@ -211,7 +199,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
       if (t.isNotEmpty) existingTitles.add(t);
     }
 
-    // if base_copy1 not present, use it
     int idx = 1;
     String candidate = '${base}_copy$idx';
     while (existingTitles.contains(candidate)) {
@@ -407,38 +394,28 @@ class _NotesListScreenState extends State<NotesListScreen> {
     }
   }
 
+  // New note action in AppBar
+  void _createNewNote() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simple Notes'),
         actions: [
-          // Always-visible buttons restored: Encrypt All, Export, Import
+          IconButton(icon: const Icon(Icons.add), tooltip: 'New Note', onPressed: _createNewNote),
           IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
           IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export notes', onPressed: _exportAllOrSelected),
           IconButton(icon: const Icon(Icons.input), tooltip: 'Import notes', onPressed: _importNotes),
-          // When some selection exists show duplicate and trash actions and quick select buttons
           if (_selectedKeys.isNotEmpty) ...[
-            IconButton(
-              icon: const Icon(Icons.select_all),
-              tooltip: 'Select all',
-              onPressed: _selectAll,
-            ),
-            IconButton(
-              icon: const Icon(Icons.clear),
-              tooltip: 'Select none',
-              onPressed: _selectNone,
-            ),
-            IconButton(
-              icon: const Icon(Icons.copy),
-              tooltip: 'Duplicate selected',
-              onPressed: _duplicateSelected,
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-              tooltip: 'Move selected to Trash',
-              onPressed: _moveSelectedToTrash,
-            ),
+            IconButton(icon: const Icon(Icons.select_all), tooltip: 'Select all', onPressed: _selectAll),
+            IconButton(icon: const Icon(Icons.clear), tooltip: 'Select none', onPressed: _selectNone),
+            IconButton(icon: const Icon(Icons.copy), tooltip: 'Duplicate selected', onPressed: _duplicateSelected),
+            IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), tooltip: 'Move selected to Trash', onPressed: _moveSelectedToTrash),
           ],
           PopupMenuButton<String>(
             onSelected: (s) {
@@ -505,17 +482,14 @@ class _NotesListScreenState extends State<NotesListScreen> {
             if (!isTrashed) visibleIndices.add(i);
           }
 
-          if (visibleIndices.isEmpty) return const Center(child: Text('No notes. Tap + to create or import one.'));
+          if (visibleIndices.isEmpty) return const Center(child: Text('No notes. Use New Note to create or import one.'));
 
-          // use ReorderableListView; we need a mapping of visibleIndices -> display widgets
           return ReorderableListView.builder(
             onReorder: (oldIdx, newIdx) {
-              // Map visible index positions (0..N-1) to actual box indices
               final actualOld = visibleIndices[oldIdx];
               int actualNew;
               if (newIdx >= visibleIndices.length) actualNew = visibleIndices.last + 1;
               else actualNew = visibleIndices[newIdx];
-              // To keep it simpler and robust, we will reorder the whole box using oldIdx/newIdx of visible list:
               _onReorder(actualOld, actualNew);
             },
             itemCount: visibleIndices.length,
@@ -539,14 +513,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
               );
             },
           );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add),
-        onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {
-            if (mounted) setState(() {});
-          });
         },
       ),
     );
