@@ -165,19 +165,12 @@ _textController.addListener(() {
   Future<void> _saveNote({bool popAfterSave = false}) async {
     try {
       final content = _textController.text;
-      final titleText = _titleController.text.trim().isEmpty
-          ? null
-          : _titleController.text.trim();
-      final sessionPw = widget.noteKey != null
-          ? _session.getNotePassword(widget.noteKey)
-          : _session.sessionPassword;
-      final shouldEncryptOnDisk =
-          sessionPw != null && sessionPw.trim().isNotEmpty;
+      final titleText = _titleController.text.trim().isEmpty ? null : _titleController.text.trim();
+      final sessionPw = widget.noteKey != null ? _session.getNotePassword(widget.noteKey) : _session.sessionPassword;
+      final shouldEncryptOnDisk = sessionPw != null && sessionPw.trim().isNotEmpty;
 
       final newNote = {
-        'content': shouldEncryptOnDisk
-            ? EncryptionService.encryptText(content, sessionPw!)
-            : content,
+        'content': shouldEncryptOnDisk ? EncryptionService.encryptText(content, sessionPw!) : content,
         'isEncrypted': shouldEncryptOnDisk,
         'title': titleText,
         'isTrashed': false,
@@ -206,14 +199,12 @@ _textController.addListener(() {
 
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
       }
 
       if (popAfterSave && mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
     }
   }
 
@@ -227,12 +218,8 @@ _textController.addListener(() {
           content:
           const Text('Do you want to save this note before leaving?'),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Discard')),
-            TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Save')),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Discard')),
+            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
           ],
         ),
       );
@@ -261,17 +248,10 @@ _textController.addListener(() {
   }
 
   Future<void> _decryptInEditor() async {
-    final password = await showPasswordDialog(
-      context,
-      "Enter password to decrypt note",
-      false,
-    );
+    final password = await showPasswordDialog(context, "Enter password to decrypt note", false,);
     if (password == null || password.isEmpty) return;
 
-    final decrypted = EncryptionService.decryptText(
-      _textController.text,
-      password,
-    );
+    final decrypted = EncryptionService.decryptText(_textController.text, password,);
 
     if (decrypted != null) {
       if (widget.noteKey != null) {
@@ -313,32 +293,19 @@ _textController.addListener(() {
           : _session.sessionPassword;
 
       if (pw == null || pw.isEmpty) {
-        final entered = await showPasswordDialog(
-          context,
-          "Set password to encrypt note",
-          true,
-        );
+        final entered = await showPasswordDialog(context, "Set password to encrypt note", true,);
         if (entered == null || entered.isEmpty) return;
         pw = entered;
 
-        if (widget.noteKey != null) {
-          _session.storeNotePassword(widget.noteKey, pw);
-        } else {
-          _session.sessionPassword = pw;
-        }
+        if (widget.noteKey != null) {_session.storeNotePassword(widget.noteKey, pw);} else {_session.sessionPassword = pw;}
       }
 
-      final encryptedText = EncryptionService.encryptText(
-        _textController.text,
-        pw!,
-      );
+      final encryptedText = EncryptionService.encryptText(_textController.text, pw!,);
 
       final Map newNote = {
         'content': encryptedText,
         'isEncrypted': true,
-        'title': _titleController.text.trim().isEmpty
-            ? null
-            : _titleController.text.trim(),
+        'title': _titleController.text.trim().isEmpty ? null : _titleController.text.trim(),
         'isTrashed': false,
       };
 
@@ -346,9 +313,7 @@ _textController.addListener(() {
         await _notesBox.putAt(widget.index!, newNote);
       } else {
         final List<Map> temp = [Map<String, dynamic>.from(newNote)];
-        temp.addAll(
-          _notesBox.values.map((e) => Map<String, dynamic>.from(e)),
-        );
+        temp.addAll(_notesBox.values.map((e) => Map<String, dynamic>.from(e)),);
         await _notesBox.clear();
         await _notesBox.addAll(temp);
       }
@@ -369,11 +334,7 @@ _textController.addListener(() {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Note encrypted. Password cleared from session; re-enter to decrypt later.',
-            ),
-          ),
+          const SnackBar(content: Text('Note encrypted. Password cleared from session; re-enter to decrypt later.',),),
         );
       }
     } catch (e) {
@@ -385,8 +346,7 @@ _textController.addListener(() {
 
   Future<void> _exportNote() async {
     try {
-      bool isDesktop =
-          Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+      bool isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
       if (!isDesktop) {
         var status = await Permission.storage.status;
@@ -402,9 +362,7 @@ _textController.addListener(() {
       }
 
       final dir = await getApplicationDocumentsDirectory();
-      final raw = _titleController.text.trim().isNotEmpty
-          ? _titleController.text.trim()
-          : 'note_${DateTime.now().millisecondsSinceEpoch}';
+      final raw = _titleController.text.trim().isNotEmpty ? _titleController.text.trim() : 'note_${DateTime.now().millisecondsSinceEpoch}';
 
       String filename = raw;
       if (!filename.toLowerCase().endsWith('.txt')) {
@@ -430,14 +388,9 @@ _textController.addListener(() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final pos = range.start;
       final text = _textController.text;
-      final before =
-          text.substring(0, pos).split('\n').length; // approx line number
+      final before = text.substring(0, pos).split('\n').length; // approx line number
       final offset = (before - 1) * 22.0; // approx line height
-      _scrollController.animateTo(
-        offset,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
+      _scrollController.animateTo(offset, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,);
     });
   }
 
@@ -445,11 +398,7 @@ _textController.addListener(() {
     final result = await showModalBottomSheet<SearchReplaceResult>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => SearchReplaceSheet(
-        controller: _textController,
-        highlightNotifier: _highlights,
-        currentMatchNotifier: _currentMatchIndex,
-      ),
+      builder: (_) => SearchReplaceSheet(controller: _textController, highlightNotifier: _highlights,currentMatchNotifier: _currentMatchIndex,),
     );
 
     if (result != null && result.jumpTo != null) {
@@ -467,10 +416,7 @@ _textController.addListener(() {
           return const SizedBox.shrink();
         }
         if (ranges.isEmpty) {
-          return Text(
-            text,
-            style: const TextStyle(color: Colors.white70, fontSize: 16),
-          );
+          return Text(text, style: const TextStyle(color: Colors.white70, fontSize: 16),);
         }
 
         ranges = List.from(ranges)..sort((a, b) => a.start.compareTo(b.start));
@@ -487,32 +433,21 @@ _textController.addListener(() {
 
           spans.add(TextSpan(
             text: text.substring(r.start, r.end),
-            style: TextStyle(
-              backgroundColor:
-              isCurrentMatch ? Colors.orange : const Color(0xFF4444AA),
-              color: Colors.white,
-            ),
+            style: TextStyle(backgroundColor: isCurrentMatch ? Colors.orange : const Color(0xFF4444AA), color: Colors.white,),
           ));
           cursor = r.end;
         }
 
-        if (cursor < text.length) {
-          spans.add(TextSpan(text: text.substring(cursor)));
-        }
+        if (cursor < text.length) {spans.add(TextSpan(text: text.substring(cursor)));}
 
-        return Text.rich(
-          TextSpan(children: spans),
-          softWrap: true,
-          style: const TextStyle(fontSize: 16, height: 1.4),
-        );
+        return Text.rich(TextSpan(children: spans), softWrap: true, style: const TextStyle(fontSize: 16, height: 1.4),);
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canInsertTime =
-        !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
+    final canInsertTime = !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
 
     return RawKeyboardListener(
       focusNode: FocusNode(),
@@ -521,38 +456,14 @@ _textController.addListener(() {
         onWillPop: _onWillPop,
         child: Scaffold(
           appBar: AppBar(
-            title: Text(_titleController.text.trim().isNotEmpty
-                ? _titleController.text.trim()
-                : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
+            title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
             actions: [
-              IconButton(
-                  icon: const Icon(Icons.search),
-                  onPressed: _openSearchReplace),
-              IconButton(
-                icon: const Icon(Icons.access_time),
-                onPressed: canInsertTime ? _insertCurrentTime : null,
-              ),
-              IconButton(
-                  icon: const Icon(Icons.copy),
-                  onPressed: _copyToClipboard),
-              IconButton(
-                icon: Icon(
-                  _isReadOnlyEncrypted
-                      ? Icons.lock_open
-                      : Icons.enhanced_encryption,
-                ),
-                onPressed:
-                _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,
-              ),
-              IconButton(
-                  icon: const Icon(Icons.system_update_alt),
-                  onPressed: _exportNote),
-              IconButton(
-                icon: const Icon(Icons.save),
-                onPressed: _isReadOnlyEncrypted
-                    ? null
-                    : () => _saveNote(popAfterSave: true),
-              ),
+              IconButton(icon: const Icon(Icons.search), onPressed: _openSearchReplace),
+              IconButton(icon: const Icon(Icons.access_time), onPressed: canInsertTime ? _insertCurrentTime : null,),
+              IconButton(icon: const Icon(Icons.copy), onPressed: _copyToClipboard),
+              IconButton(icon: Icon( _isReadOnlyEncrypted ? Icons.lock_open : Icons.enhanced_encryption,), onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,),
+              IconButton(icon: const Icon(Icons.download_outlined), onPressed: _exportNote),
+              IconButton(icon: const Icon(Icons.save), onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),),
             ],
           ),
           body: Padding(

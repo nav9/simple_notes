@@ -3,42 +3,42 @@ import 'package:flutter/material.dart';
 
 class HelpScreen extends StatelessWidget {
   final List<Map<String, String>> items = [
-    {'icon': 'add', 'explain': 'Add a new note (AppBar + icon)'},
-    {'icon': 'delete', 'explain': 'Move selected notes to Trash (no confirmation). Use Undo or Trash page to restore or permanently delete.'},
-    {'icon': 'lock', 'explain': 'Encrypt all decrypted notes (clears session passwords)'},
-    {'icon': 'download_outlined', 'explain': 'Export notes to app documents (selected or all).'},
-    {'icon': 'present_to_all', 'explain': 'Import note(s) from .txt files'},
-    {'icon': 'access_time', 'explain': 'Insert current time into note (enabled when editing)'},
-    {'icon': 'copy', 'explain': 'Copy note contents to clipboard'},
-    {'icon': 'enhanced_encryption', 'explain': 'Encrypt / Decrypt the current note. Encrypted content remains unreadable unless decrypted with password.'},
-    {'icon': 'system_update_alt', 'explain': 'Export current note to a file'},
-    {'icon': 'save', 'explain': 'Save note (when editing). Ctrl+S also saves on Linux.'},
-    {'icon': 'search', 'explain': 'Find & Replace: Ctrl+F to open search on Linux. Matches are highlighted and you can cycle between them.'},
+    {'icon': 'New note', 'explain': 'Create a new note'},
+    {'icon': 'Move to trash', 'explain': 'Move selected notes to Trash. Use the restore or permanently delete options from the Trash page.'},
+    {'icon': 'Encrypt all', 'explain': 'Encrypt all notes that are currently in temporary decrypted state (also clears session passwords). This is an emergency button to protect the decrypted notes quickly.'},
+    {'icon': 'Export to disk', 'explain': 'Export notes to disk (if any notes are selected only those notes will be exported; otherwise all notes will be exported to disk). . In Android this would usually be in the folder `Android/com.simple_notes/`. In Linux it would usually be in the `~/Documents/` folder. Each note will be a text file with the note title being the filename.'},
+    {'icon': 'Import from disk', 'explain': 'Import one or more notes from .txt files. The notes may be in encrypted form (in a format recognized by Simple Notes) or plain text.'},
+    {'icon': 'Insert time', 'explain': 'Insert current time into note at the cursor position (enabled when editing)'},
+    {'icon': 'Copy to clipboard', 'explain': 'Copy note contents to clipboard'},
+    {'icon': 'Duplicate', 'explain': 'Duplicate the selected note(s)'},
+    {'icon': 'Encrypt/Decrypt', 'explain': 'Encrypt or decrypt the current note.'},
+    {'icon': 'Save', 'explain': 'Save note to the Simple Notes Hive database. Ctrl+S also saves on Linux.'},
+    {'icon': 'Search', 'explain': 'Find & Replace: Ctrl+F to open search on Linux.'},
   ];
 
   IconData _iconFromName(String name) {
     switch (name) {
-      case 'add':
+      case 'New note':
         return Icons.add;
-      case 'delete':
+      case 'Move to trash':
         return Icons.delete;
-      case 'lock':
+      case 'Encrypt all':
         return Icons.lock;
-      case 'download_outlined':
+      case 'Export to disk':
         return Icons.download_outlined;
-      case 'present_to_all':
-        return Icons.present_to_all;
-      case 'access_time':
+      case 'Import from disk':
+        return Icons.file_upload;
+      case 'Insert time':
         return Icons.access_time;
-      case 'copy':
+      case 'Copy to clipboard':
         return Icons.copy;
-      case 'enhanced_encryption':
+      case 'Duplicate':
+        return Icons.control_point_duplicate;
+      case 'Encrypt/Decrypt':
         return Icons.enhanced_encryption;
-      case 'system_update_alt':
-        return Icons.system_update_alt;
-      case 'save':
+      case 'Save':
         return Icons.save;
-      case 'search':
+      case 'Search':
         return Icons.search;
       default:
         return Icons.help_outline;
@@ -48,18 +48,12 @@ class HelpScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Help'),
-      ),
+      appBar: AppBar(title: const Text('Help'),),
       body: ListView.builder(
         itemCount: items.length,
         itemBuilder: (context, i) {
           final it = items[i];
-          return ListTile(
-            leading: Icon(_iconFromName(it['icon']!)),
-            title: Text(it['icon']!),
-            subtitle: Text(it['explain']!),
-          );
+          return ListTile(leading: Icon(_iconFromName(it['icon']!)), title: Text(it['icon']!), subtitle: Text(it['explain']!),);
         },
       ),
     );

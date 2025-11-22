@@ -47,12 +47,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
         if (pw == null || pw.isEmpty) continue;
         final enc = EncryptionService.encryptText(plain, pw);
         final old = notesBox.get(key);
-        final updated = {
-          'content': enc,
-          'isEncrypted': true,
-          'title': old?['title'] ?? null,
-          'isTrashed': old?['isTrashed'] ?? false
-        };
+        final updated = {'content': enc, 'isEncrypted': true, 'title': old?['title'] ?? null, 'isTrashed': old?['isTrashed'] ?? false};
         await notesBox.put(key, updated);
         _decryptedNotesCache.remove(key);
         _session.clearNotePassword(key);
@@ -410,11 +405,11 @@ class _NotesListScreenState extends State<NotesListScreen> {
           IconButton(icon: const Icon(Icons.add), tooltip: 'New Note', onPressed: _createNewNote),
           IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
           IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export notes', onPressed: _exportAllOrSelected),
-          IconButton(icon: const Icon(Icons.input), tooltip: 'Import notes', onPressed: _importNotes),
+          IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import notes', onPressed: _importNotes),
           if (_selectedKeys.isNotEmpty) ...[
             IconButton(icon: const Icon(Icons.select_all), tooltip: 'Select all', onPressed: _selectAll),
             IconButton(icon: const Icon(Icons.clear), tooltip: 'Select none', onPressed: _selectNone),
-            IconButton(icon: const Icon(Icons.copy), tooltip: 'Duplicate selected', onPressed: _duplicateSelected),
+            IconButton(icon: const Icon(Icons.control_point_duplicate), tooltip: 'Duplicate selected', onPressed: _duplicateSelected),
             IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), tooltip: 'Move selected to Trash', onPressed: _moveSelectedToTrash),
           ],
           PopupMenuButton<String>(
