@@ -37,6 +37,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
       if (_decryptedNotesCache.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No decrypted notes in session to encrypt.')));
         _session.clearAllNotePasswords();
+        setState(() {});
         return;
       }
       for (final entry in _decryptedNotesCache.entries.toList()) {
@@ -321,11 +322,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
       ),
       title: Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: displaySubtitle.isNotEmpty ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
-      trailing: isEncrypted
-          ? Row(mainAxisSize: MainAxisSize.min, children: [
+      trailing: isEncrypted ? Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(isDecryptedInSession ? Icons.lock_open : Icons.lock),
-        if (isDecryptedInSession) const SizedBox(width: 6),
-        if (isDecryptedInSession) const Text('Decrypted', style: TextStyle(color: Colors.greenAccent))
+        if (isDecryptedInSession) const SizedBox(width: 6),        
+        if (isDecryptedInSession) const Text('Decrypted', style: TextStyle(color: Colors.greenAccent)) 
       ])
           : null,
       onTap: () {
