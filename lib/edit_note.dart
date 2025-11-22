@@ -30,7 +30,7 @@ class EditNoteScreen extends StatefulWidget {
 }
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
-  final _textController = TextEditingController();
+  late HighlightTextEditingController _textController;
   final _titleController = TextEditingController();
   final _focusNode = FocusNode();
 
@@ -54,12 +54,22 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   String? _originalTitleSnapshot;
   final _notesBox = Hive.box<Map>('notesBox');
   final _session = SessionManager();
+  String _lastKnownText = '';
 
   @override
   void initState() {
     super.initState();
     final content = widget.note ?? '';
-    _textController.text = content;
+    // Initialize tracker
+    _lastKnownText = content;
+    _textController = HighlightTextEditingController(
+      text: content,
+      baseStyle: const TextStyle(
+        color: Colors.white, // Or Colors.white if dark mode
+        fontSize: 16, 
+        height: 1.4
+      ),
+    );
     _originalTextSnapshot = content;
 
     if (widget.noteKey != null) {
@@ -95,11 +105,36 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       });
     });
 
-    _textController.addListener(() {
+_textController.addListener(() {
       final sel = _textController.selection;
       if (sel.isValid) _lastSelection = sel;
-      _highlights.value = []; // Clear old highlights on text edit
+
+      // ONLY clear highlights if the text CONTENT has changed.
+      // This prevents infinite loops when notifyListeners() is called 
+      // for selection changes or highlight updates.
+      if (_textController.text != _lastKnownText) {
+         _lastKnownText = _textController.text;
+         
+         // Only clear if we actually have highlights to clear
+         if (_highlights.value.isNotEmpty) {
+            _highlights.value = [];
+            _textController.highlights = [];
+         }
+      }
     });
+
+// CHANGE 4: Listen to _highlights value notifier to update the controller
+    _highlights.addListener(() {
+       _textController.highlights = _highlights.value;
+       // Force a repaint of the text
+       _textController.notifyListeners(); 
+    });
+
+// CHANGE 5: Listen to match index to update the active color
+    _currentMatchIndex.addListener(() {
+      _textController.currentMatchIndex = _currentMatchIndex.value;
+      _textController.notifyListeners();
+    });        
   }
 
   @override
@@ -247,6 +282,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
       setState(() {
         _textController.text = decrypted;
+        _lastKnownText = decrypted;
         _originalTextSnapshot = decrypted;
         _isReadOnlyEncrypted = false;
       });
@@ -326,6 +362,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
       setState(() {
         _textController.text = encryptedText;
+        _lastKnownText = encryptedText;
         _originalTextSnapshot = encryptedText;
         _isReadOnlyEncrypted = true;
       });
@@ -541,40 +578,28 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                         _ignorePointerForEditorField = false;
                       });
                     },
-                    child: Stack(
-                      children: [
-                        // HIGHLIGHTED LAYER UNDERNEATH
-                        Positioned.fill(
-                          child: SingleChildScrollView(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(8),
-                            child: _buildHighlightedText(),
-                          ),
-                        ),
-
-                        // EDITABLE TRANSPARENT TEXTFIELD
-                        Positioned.fill(
-                          child: IgnorePointer(
-                            ignoring: false,
-                            child: TextField(
-                              controller: _textController,
-                              focusNode: _focusNode,
-                              readOnly: _isReadOnlyEncrypted,
-                              maxLines: null,
-                              decoration: const InputDecoration(
-                                  border: OutlineInputBorder(),
-                                  hintText: 'Enter your note'),
-                              style: const TextStyle(
-                                  color: Colors.transparent,
-                                  fontSize: 16,
-                                  height: 1.4),
-                              cursorColor: Colors.white,
-                              scrollPhysics:
-                              const NeverScrollableScrollPhysics(),
-                            ),
-                          ),
-                        ),
-                      ],
+                    child: TextField(
+                      controller: _textController,
+                      focusNode: _focusNode,
+                      // Important: Pass the scroll controller here so _scrollToRange works
+                      scrollController: _scrollController, 
+                      readOnly: _isReadOnlyEncrypted,
+                      maxLines: null,
+                      expands: true, // Fills the Expanded parent
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: 'Enter your note',
+                      ),
+                      // CHANGE 7: Restore normal styles and physics
+                      style: const TextStyle(
+                        fontSize: 16, 
+                        height: 1.4, 
+                        color: Colors.black // Ensure text is visible
+                      ),
+                      cursorColor: Colors.blue,
+                      // Use normal physics or AlwaysScrollableScrollPhysics
+                      scrollPhysics: const AlwaysScrollableScrollPhysics(), 
                     ),
                   ),
                 ),
@@ -613,5 +638,77 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     _textController.text = newText;
     _textController.selection =
         TextSelection.collapsed(offset: sel.start + timeStr.length);
+  }
+}
+
+/// A custom controller that highlights text ranges based on search matches
+class HighlightTextEditingController extends TextEditingController {
+  List<TextRange> highlights = [];
+  int currentMatchIndex = 0;
+
+  // Colors
+  final Color matchColor = const Color(0xFF4444AA);
+  final Color currentMatchColor = Colors.orange;
+  final TextStyle baseStyle;
+
+  HighlightTextEditingController({
+    required String text,
+    this.baseStyle = const TextStyle(fontSize: 16, height: 1.4, color: Colors.black),
+  }) : super(text: text);
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    // If no highlights, just return standard text
+    if (highlights.isEmpty) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    // Sort ranges just to be safe
+    final sortedRanges = List<TextRange>.from(highlights)
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    final spans = <TextSpan>[];
+    int cursor = 0;
+
+    for (int i = 0; i < sortedRanges.length; i++) {
+      final range = sortedRanges[i];
+
+      // Add non-highlighted text before the match
+      if (range.start > cursor) {
+        spans.add(TextSpan(
+          text: text.substring(cursor, range.start),
+          style: baseStyle,
+        ));
+      }
+
+      // Add the highlighted match
+      // Ensure we don't crash if range is out of bounds (safety check)
+      if (range.end <= text.length) {
+        final isCurrent = (i == currentMatchIndex);
+        spans.add(TextSpan(
+          text: text.substring(range.start, range.end),
+          style: baseStyle.copyWith(
+            backgroundColor: isCurrent ? currentMatchColor : matchColor,
+            color: Colors.white,
+          ),
+        ));
+      }
+
+      cursor = range.end;
+    }
+
+    // Add remaining text
+    if (cursor < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(cursor),
+        style: baseStyle,
+      ));
+    }
+
+    return TextSpan(style: baseStyle, children: spans);
   }
 }
