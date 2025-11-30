@@ -1,14 +1,15 @@
 //Flutter icons: https://api.flutter.dev/flutter/material/Icons-class.html and https://www.fluttericon.com/
-//TODO: Inserting custom dictionary phrases. 
+//TODO: Inserting custom dictionary phrases. (//https://pub.dev/packages/flutter_typeahead/example and https://medium.com/saugo360/https-medium-com-saugo360-flutter-using-overlay-to-display-floating-widgets-2e6d0e8decb9)
 //TODO: Multi search. 
 //TODO: Encryption that's compatible with Python. 
-//TODO: Ensuring that exported files also contain an Linux version and Android version of Simple Notes to be able to open encrypted files. 
+//TODO: Ensuring that archived exported files also contain a Linux version and Android version of Simple Notes to be able to open encrypted files. 
 //TODO: Ensure that the note name is a valid Android/Linux filename so have exception handling. 
 //TODO: Undo/redo. 
-//TODO: Cycle between search matches.
+//TODO: Scroll while cycling between search matches.
 //TODO: Find and Replace option should not be available in read-only mode of encrypted text
 //TODO: On clicking the search button the cursor focus needs to go to the "Find" textfield.
 //TODO: The word typed in "Find" needs to persist even when the find bar is closed and reopened. 
+
 
 // lib/main.dart
 import 'package:flutter/material.dart';
