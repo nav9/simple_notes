@@ -10,7 +10,9 @@ import 'encryption_service.dart';
 import 'edit_note.dart';
 import 'help.dart';
 import 'trash.dart';
+import 'about.dart';
 import 'package:file_picker/file_picker.dart';
+import 'password_dialog.dart';
 
 class NotesListScreen extends StatefulWidget {
   @override
@@ -35,7 +37,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
   Future<void> _encryptAllDecryptedNotes() async {
     try {
       if (_decryptedNotesCache.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No decrypted notes in session to encrypt.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No decrypted notes in session to encrypt.')));
         _session.clearAllNotePasswords();
         setState(() {});
         return;
@@ -47,7 +50,12 @@ class _NotesListScreenState extends State<NotesListScreen> {
         if (pw == null || pw.isEmpty) continue;
         final enc = EncryptionService.encryptText(plain, pw);
         final old = notesBox.get(key);
-        final updated = {'content': enc, 'isEncrypted': true, 'title': old?['title'] ?? null, 'isTrashed': old?['isTrashed'] ?? false};
+        final updated = {
+          'content': enc,
+          'isEncrypted': true,
+          'title': old?['title'] ?? null,
+          'isTrashed': old?['isTrashed'] ?? false
+        };
         await notesBox.put(key, updated);
         _decryptedNotesCache.remove(key);
         _session.clearNotePassword(key);
@@ -55,10 +63,13 @@ class _NotesListScreenState extends State<NotesListScreen> {
       _session.clearAllNotePasswords();
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypted session-decrypted notes and cleared passwords.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Encrypted session-decrypted notes and cleared passwords.')));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to encrypt all: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to encrypt all: $e')));
     }
   }
 
@@ -85,7 +96,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
           label: 'UNDO',
           onPressed: () async {
             for (final key in List<dynamic>.from(_selectedKeys)) {
-              final n = Map<String, dynamic>.from(await notesBox.get(key) as Map);
+              final n =
+                  Map<String, dynamic>.from(await notesBox.get(key) as Map);
               n['isTrashed'] = false;
               await notesBox.put(key, n);
             }
@@ -100,7 +112,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
       _selectedKeys.clear();
       if (mounted) setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to move to trash: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to move to trash: $e')));
     }
   }
 
@@ -151,16 +164,20 @@ class _NotesListScreenState extends State<NotesListScreen> {
             'isTrashed': false,
           };
           final List<Map> tempList = [Map<String, dynamic>.from(newNote)];
-          tempList.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+          tempList
+              .addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
           await notesBox.clear();
           await notesBox.addAll(tempList);
         } else {
           final sessionPw = _session.getNotePassword(key);
           String? plain;
           if (sessionPw != null && sessionPw.isNotEmpty) {
-            final tryDec = EncryptionService.decryptText(note['content'] as String, sessionPw);
-            if (tryDec != null) plain = tryDec;
-            else plain = note['content'] as String;
+            final tryDec = EncryptionService.decryptText(
+                note['content'] as String, sessionPw);
+            if (tryDec != null)
+              plain = tryDec;
+            else
+              plain = note['content'] as String;
           } else {
             plain = note['content'] as String;
           }
@@ -172,7 +189,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
             'isTrashed': false,
           };
           final List<Map> tempList = [Map<String, dynamic>.from(newNote)];
-          tempList.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+          tempList
+              .addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
           await notesBox.clear();
           await notesBox.addAll(tempList);
         }
@@ -180,9 +198,11 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
       _selectedKeys.clear();
       if (mounted) setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicated selected notes')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Duplicated selected notes')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
     }
   }
 
@@ -207,7 +227,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
   // Import notes (txt files) — title used as filename base (without extension)
   Future<void> _importNotes() async {
     try {
-      FilePickerResult? res = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.custom, allowedExtensions: ['txt']);
+      FilePickerResult? res = await FilePicker.platform.pickFiles(
+          allowMultiple: true,
+          type: FileType.custom,
+          allowedExtensions: ['txt']);
       if (res == null) return;
       for (var file in res.files) {
         if (file.path == null) continue;
@@ -224,7 +247,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
       }
       if (mounted) setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Import failed: $e')));
     }
   }
 
@@ -236,7 +260,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
         var status = await Permission.storage.status;
         if (!status.isGranted) status = await Permission.storage.request();
         if (!status.isGranted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission denied.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Storage permission denied.')));
           return;
         }
       }
@@ -245,7 +270,9 @@ class _NotesListScreenState extends State<NotesListScreen> {
       final exportDir = Directory(p.join(dir.path, 'simple_notes_export'));
       await exportDir.create(recursive: true);
 
-      final keysToExport = _selectedKeys.isNotEmpty ? List<dynamic>.from(_selectedKeys) : List<dynamic>.from(notesBox.keys);
+      final keysToExport = _selectedKeys.isNotEmpty
+          ? List<dynamic>.from(_selectedKeys)
+          : List<dynamic>.from(notesBox.keys);
 
       int ordinal = 1;
       for (final key in keysToExport) {
@@ -260,7 +287,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
           } else {
             filename = 'note_${ordinal++}';
           }
-          if (!filename.toLowerCase().endsWith('.txt')) filename = '$filename.txt';
+          if (!filename.toLowerCase().endsWith('.txt'))
+            filename = '$filename.txt';
           final path = p.join(exportDir.path, filename);
           await File(path).writeAsString(n['content']);
         } catch (e) {
@@ -268,9 +296,98 @@ class _NotesListScreenState extends State<NotesListScreen> {
         }
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Exported notes to ${exportDir.path}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Exported notes to ${exportDir.path}')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    }
+  }
+
+  Future<void> _mergeSelectedNotes() async {
+    try {
+      if (_selectedKeys.length < 2) return;
+
+      // Preserve visible order
+      final orderedKeys = <dynamic>[];
+      for (int i = 0; i < notesBox.length; i++) {
+        final key = notesBox.keyAt(i);
+        if (_selectedKeys.contains(key)) orderedKeys.add(key);
+      }
+
+      final Map<String, String> passwordCache = {};
+      final buffer = StringBuffer();
+
+      for (final key in orderedKeys) {
+        final note = notesBox.get(key)!;
+        String content = note['content'] as String;
+        final isEncrypted = note['isEncrypted'] ?? false;
+
+        if (isEncrypted) {
+          String? decrypted;
+
+          // Try known passwords
+          for (final pw in passwordCache.values) {
+            decrypted = EncryptionService.decryptText(content, pw);
+            if (decrypted != null) break;
+          }
+
+          // Try session password
+          final sessionPw = _session.getNotePassword(key);
+          if (decrypted == null && sessionPw != null) {
+            decrypted = EncryptionService.decryptText(content, sessionPw);
+            if (decrypted != null) {
+              passwordCache[key.toString()] = sessionPw;
+            }
+          }
+
+          // Ask user
+          while (decrypted == null) {
+            final pw = await showPasswordDialog(
+              context,
+              'Password for "${note['title'] ?? 'Encrypted note'}"',
+              false,
+            );
+            if (pw == null || pw.isEmpty) return;
+            decrypted = EncryptionService.decryptText(content, pw);
+            if (decrypted != null) {
+              passwordCache[key.toString()] = pw;
+            }
+          }
+
+          content = decrypted;
+        }
+
+        final title = (note['title'] as String?)?.trim();
+        if (title != null && title.isNotEmpty) {
+          buffer.writeln(title);
+        }
+        buffer.writeln(content);
+        buffer.writeln();
+      }
+
+      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final newNote = {
+        'title': 'Merged$timestamp.txt',
+        'content': buffer.toString().trim(),
+        'isEncrypted': false,
+        'isTrashed': false,
+      };
+
+      final List<Map> temp = [newNote];
+      temp.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+      await notesBox.clear();
+      await notesBox.addAll(temp);
+
+      _selectedKeys.clear();
+      if (mounted) setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notes merged successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Merge failed: $e')),
+      );
     }
   }
 
@@ -293,8 +410,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
         displaySubtitle = _singleLineSnippet(content);
       } else {
         final sessionPw = _session.getNotePassword(key);
-        if (sessionPw != null && sessionPw.isNotEmpty) displaySubtitle = 'Decrypted';
-        else displaySubtitle = '🔒 Encrypted';
+        if (sessionPw != null && sessionPw.isNotEmpty)
+          displaySubtitle = 'Decrypted';
+        else
+          displaySubtitle = '🔒 Encrypted';
       }
     } else {
       if (isEncrypted) {
@@ -316,19 +435,29 @@ class _NotesListScreenState extends State<NotesListScreen> {
         onChanged: (_) => _toggleSelection(key),
       ),
       title: Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: displaySubtitle.isNotEmpty ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
-      trailing: isEncrypted ? Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(isDecryptedInSession ? Icons.lock_open : Icons.lock),
-        if (isDecryptedInSession) const SizedBox(width: 6),        
-        if (isDecryptedInSession) const Text('Decrypted', style: TextStyle(color: Colors.greenAccent)) 
-      ])
+      subtitle: displaySubtitle.isNotEmpty
+          ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
+          : null,
+      trailing: isEncrypted
+          ? Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(isDecryptedInSession ? Icons.lock_open : Icons.lock),
+              if (isDecryptedInSession) const SizedBox(width: 6),
+              if (isDecryptedInSession)
+                const Text('Decrypted',
+                    style: TextStyle(color: Colors.greenAccent))
+            ])
           : null,
       onTap: () {
         final content = note['content'] as String;
         final initialIsEncrypted = (note['isEncrypted'] ?? false) as bool;
         Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
+          MaterialPageRoute(
+              builder: (_) => EditNoteScreen(
+                  index: index,
+                  noteKey: key,
+                  note: content,
+                  initialIsEncrypted: initialIsEncrypted)),
         ).then((_) {
           if (mounted) setState(() {});
         });
@@ -385,15 +514,123 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
       if (mounted) setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Reorder failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Reorder failed: $e')));
     }
   }
 
   // New note action in AppBar
   void _createNewNote() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen()))
+        .then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  List<PopupMenuEntry<String>> _buildMainMenuItems(BuildContext context) {
+    final hasSelection = _selectedKeys.isNotEmpty;
+    final multipleSelected = _selectedKeys.length > 1;
+
+    return [
+      if (hasSelection) ...[
+        const PopupMenuItem(
+          value: 'select_all',
+          child: ListTile(
+            leading: Icon(Icons.select_all),
+            title: Text('Select All'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'select_none',
+          child: ListTile(
+            leading: Icon(Icons.clear),
+            title: Text('Select None'),
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: 'duplicate',
+          child: ListTile(
+            leading: Icon(Icons.control_point_duplicate),
+            title: Text('Duplicate'),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'export_selected',
+          child: ListTile(
+            leading: Icon(Icons.download_outlined),
+            title: Text('Export'),
+          ),
+        ),
+        if (multipleSelected)
+          const PopupMenuItem(
+            value: 'merge',
+            child: ListTile(
+              leading: Icon(Icons.merge_type),
+              title: Text('Merge'),
+            ),
+          ),
+        const PopupMenuItem(
+          value: 'trash',
+          child: ListTile(
+            leading: Icon(Icons.delete),
+            title: Text('Delete'),
+          ),
+        ),
+        const PopupMenuDivider(),
+      ],
+      const PopupMenuItem(
+        value: 'encrypt_all',
+        child: ListTile(
+          leading: Icon(Icons.lock),
+          title: Text('Encrypt all decrypted notes'),
+        ),
+      ),
+      const PopupMenuItem(
+        value: 'export_all',
+        child: ListTile(
+          leading: Icon(Icons.file_download),
+          title: Text('Export All'),
+        ),
+      ),
+      const PopupMenuItem(
+        value: 'import',
+        child: ListTile(
+          leading: Icon(Icons.file_upload),
+          title: Text('Import Notes'),
+        ),
+      ),
+    ];
+  }
+
+  void _handleMenuAction(String action) {
+    switch (action) {
+      case 'select_all':
+        _selectAll();
+        break;
+      case 'select_none':
+        _selectNone();
+        break;
+      case 'duplicate':
+        _duplicateSelected();
+        break;
+      case 'trash':
+        _moveSelectedToTrash();
+        break;
+      case 'encrypt_all':
+        _encryptAllDecryptedNotes();
+        break;
+      case 'export_selected':
+      case 'export_all':
+        _exportAllOrSelected();
+        break;
+      case 'import':
+        _importNotes();
+        break;
+      case 'merge':
+        _mergeSelectedNotes();
+        break;
+    }
   }
 
   @override
@@ -402,57 +639,70 @@ class _NotesListScreenState extends State<NotesListScreen> {
       appBar: AppBar(
         title: const Text('Simple Notes'),
         actions: [
-          IconButton(icon: const Icon(Icons.add), tooltip: 'New Note', onPressed: _createNewNote),
-          IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
-          IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export notes', onPressed: _exportAllOrSelected),
-          IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import notes', onPressed: _importNotes),
-          if (_selectedKeys.isNotEmpty) ...[
-            IconButton(icon: const Icon(Icons.select_all), tooltip: 'Select all', onPressed: _selectAll),
-            IconButton(icon: const Icon(Icons.clear), tooltip: 'Select none', onPressed: _selectNone),
-            IconButton(icon: const Icon(Icons.control_point_duplicate), tooltip: 'Duplicate selected', onPressed: _duplicateSelected),
-            IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), tooltip: 'Move selected to Trash', onPressed: _moveSelectedToTrash),
-          ],
+          IconButton(
+              icon: const Icon(Icons.add, color: Colors.greenAccent),
+              tooltip: 'New Note',
+              onPressed: _createNewNote),
+          // IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
+          // IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export notes', onPressed: _exportAllOrSelected),
+          // IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import notes', onPressed: _importNotes),
+          // if (_selectedKeys.isNotEmpty) ...[
+          //   IconButton(icon: const Icon(Icons.select_all), tooltip: 'Select all', onPressed: _selectAll),
+          //   IconButton(icon: const Icon(Icons.clear), tooltip: 'Select none', onPressed: _selectNone),
+          //   IconButton(icon: const Icon(Icons.control_point_duplicate), tooltip: 'Duplicate selected', onPressed: _duplicateSelected),
+          //   IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), tooltip: 'Move selected to Trash', onPressed: _moveSelectedToTrash),
+          // ],
           PopupMenuButton<String>(
-            onSelected: (s) {
-              switch (s) {
-                case 'select_all':
-                  _selectAll();
-                  break;
-                case 'select_none':
-                  _selectNone();
-                  break;
-                case 'encrypt_all':
-                  _encryptAllDecryptedNotes();
-                  break;
-                case 'export_all':
-                  _exportAllOrSelected();
-                  break;
-                case 'import':
-                  _importNotes();
-                  break;
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'select_all', child: Text('Select all')),
-              const PopupMenuItem(value: 'select_none', child: Text('Select none')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'encrypt_all', child: Text('Encrypt all decrypted notes')),
-              const PopupMenuItem(value: 'export_all', child: Text('Export notes')),
-              const PopupMenuItem(value: 'import', child: Text('Import notes')),
-            ],
+            onSelected: _handleMenuAction,
+            itemBuilder: _buildMainMenuItems,
+            // onSelected: (s) {
+            //   switch (s) {
+            //     case 'select_all':
+            //       _selectAll();
+            //       break;
+            //     case 'select_none':
+            //       _selectNone();
+            //       break;
+            //     case 'encrypt_all':
+            //       _encryptAllDecryptedNotes();
+            //       break;
+            //     case 'export_all':
+            //       _exportAllOrSelected();
+            //       break;
+            //     case 'import':
+            //       _importNotes();
+            //       break;
+            //   }
+            // },
+            // itemBuilder: (_) => [
+            //   const PopupMenuItem(
+            //       value: 'select_all', child: Text('Select all')),
+            //   const PopupMenuItem(
+            //       value: 'select_none', child: Text('Select none')),
+            //   const PopupMenuDivider(),
+            //   const PopupMenuItem(
+            //       value: 'encrypt_all',
+            //       child: Text('Encrypt all decrypted notes')),
+            //   const PopupMenuItem(
+            //       value: 'export_all', child: Text('Export notes')),
+            //   const PopupMenuItem(value: 'import', child: Text('Import notes')),
+            // ],
           ),
         ],
       ),
       drawer: Drawer(
         child: ListView(
           children: [
-            DrawerHeader(child: Text('Menu', style: Theme.of(context).textTheme.headlineSmall)),
+            DrawerHeader(
+                child: Text('Menu',
+                    style: Theme.of(context).textTheme.headlineSmall)),
             ListTile(
               leading: const Icon(Icons.help_outline),
               title: const Text('Help'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
+                Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => HelpScreen()));
               },
             ),
             ListTile(
@@ -460,7 +710,19 @@ class _NotesListScreenState extends State<NotesListScreen> {
               title: const Text('Trash'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => TrashScreen()));
+                Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => TrashScreen()));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => AboutScreen()),
+                );
               },
             ),
           ],
@@ -477,14 +739,18 @@ class _NotesListScreenState extends State<NotesListScreen> {
             if (!isTrashed) visibleIndices.add(i);
           }
 
-          if (visibleIndices.isEmpty) return const Center(child: Text('No notes. Use New Note to create or import one.'));
+          if (visibleIndices.isEmpty)
+            return const Center(
+                child: Text('No notes. Use New Note to create or import one.'));
 
           return ReorderableListView.builder(
             onReorder: (oldIdx, newIdx) {
               final actualOld = visibleIndices[oldIdx];
               int actualNew;
-              if (newIdx >= visibleIndices.length) actualNew = visibleIndices.last + 1;
-              else actualNew = visibleIndices[newIdx];
+              if (newIdx >= visibleIndices.length)
+                actualNew = visibleIndices.last + 1;
+              else
+                actualNew = visibleIndices[newIdx];
               _onReorder(actualOld, actualNew);
             },
             itemCount: visibleIndices.length,

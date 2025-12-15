@@ -33,6 +33,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   late HighlightTextEditingController _textController;
   final _titleController = TextEditingController();
   final _focusNode = FocusNode();
+  late final bool _enableHighlighting;
+
 
   /// NEW: Scroll controller for editor
   final ScrollController _scrollController = ScrollController();
@@ -42,7 +44,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   /// Highlight ranges (used to mark matches)
   final ValueNotifier<List<TextRange>> _highlights =
-  ValueNotifier<List<TextRange>>([]);
+      ValueNotifier<List<TextRange>>([]);
 
   /// NEW: Index of current match
   final ValueNotifier<int> _currentMatchIndex = ValueNotifier<int>(0);
@@ -59,17 +61,22 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   @override
   void initState() {
     super.initState();
+    _enableHighlighting = !Platform.isAndroid;
     final content = widget.note ?? '';
     // Initialize tracker
-    _lastKnownText = content;
-    _textController = HighlightTextEditingController(
-      text: content,
-      baseStyle: const TextStyle(
-        color: Colors.white, // Or Colors.white if dark mode
-        fontSize: 16, 
-        height: 1.4
-      ),
-    );
+    _lastKnownText = content;    
+    // _textController = HighlightTextEditingController(
+    //   text: content,
+    //   baseStyle: const TextStyle(
+    //       color: Colors.white, // Or Colors.white if dark mode
+    //       fontSize: 16,
+    //       height: 1.4),
+    // );
+    if (_enableHighlighting) {_textController = HighlightTextEditingController(text: content, baseStyle: const TextStyle(fontSize: 16, height: 1.4),);} 
+    else {_textController = HighlightTextEditingController(text: content, baseStyle: const TextStyle(fontSize: 16, height: 1.4),)
+        ..highlights = []; // no highlights ever
+    }
+
     _originalTextSnapshot = content;
 
     if (widget.noteKey != null) {
@@ -105,36 +112,55 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       });
     });
 
-_textController.addListener(() {
+    _textController.addListener(() {
       final sel = _textController.selection;
       if (sel.isValid) _lastSelection = sel;
 
       // ONLY clear highlights if the text CONTENT has changed.
-      // This prevents infinite loops when notifyListeners() is called 
+      // This prevents infinite loops when notifyListeners() is called
       // for selection changes or highlight updates.
       if (_textController.text != _lastKnownText) {
-         _lastKnownText = _textController.text;
-         
-         // Only clear if we actually have highlights to clear
-         if (_highlights.value.isNotEmpty) {
-            _highlights.value = [];
-            _textController.highlights = [];
-         }
+        _lastKnownText = _textController.text;
+
+        // Only clear if we actually have highlights to clear
+        if (_highlights.value.isNotEmpty) {
+          _highlights.value = [];
+          _textController.highlights = [];
+        }
       }
     });
 
 // CHANGE 4: Listen to _highlights value notifier to update the controller
     _highlights.addListener(() {
-       _textController.highlights = _highlights.value;
-       // Force a repaint of the text
-       _textController.notifyListeners(); 
+      if (!_enableHighlighting) return;
+      _textController.highlights = _highlights.value;
+      // Force a repaint of the text
+      _textController.notifyListeners();
     });
 
 // CHANGE 5: Listen to match index to update the active color
     _currentMatchIndex.addListener(() {
+      if (!_enableHighlighting) return;
       _textController.currentMatchIndex = _currentMatchIndex.value;
       _textController.notifyListeners();
-    });        
+    });
+  }
+
+  void _handleEditorMenuAction(String action) {
+    switch (action) {
+      case 'search':
+        _openSearchReplace();
+        break;
+      case 'copy':
+        _copyToClipboard();
+        break;
+      case 'encrypt':
+        _isReadOnlyEncrypted ? _decryptInEditor() : _encryptInEditor();
+        break;
+      case 'export':
+        _exportNote();
+        break;
+    }
   }
 
   @override
@@ -151,8 +177,8 @@ _textController.addListener(() {
   bool get _isDirty {
     final currentText = _textController.text;
     final currentTitle = _titleController.text;
-    if (_originalTextSnapshot != null &&
-        currentText != _originalTextSnapshot) return true;
+    if (_originalTextSnapshot != null && currentText != _originalTextSnapshot)
+      return true;
     if (_originalTitleSnapshot != null &&
         currentTitle != _originalTitleSnapshot) return true;
     if (_originalTextSnapshot == null && currentText.trim().isNotEmpty)
@@ -165,12 +191,19 @@ _textController.addListener(() {
   Future<void> _saveNote({bool popAfterSave = false}) async {
     try {
       final content = _textController.text;
-      final titleText = _titleController.text.trim().isEmpty ? null : _titleController.text.trim();
-      final sessionPw = widget.noteKey != null ? _session.getNotePassword(widget.noteKey) : _session.sessionPassword;
-      final shouldEncryptOnDisk = sessionPw != null && sessionPw.trim().isNotEmpty;
+      final titleText = _titleController.text.trim().isEmpty
+          ? null
+          : _titleController.text.trim();
+      final sessionPw = widget.noteKey != null
+          ? _session.getNotePassword(widget.noteKey)
+          : _session.sessionPassword;
+      final shouldEncryptOnDisk =
+          sessionPw != null && sessionPw.trim().isNotEmpty;
 
       final newNote = {
-        'content': shouldEncryptOnDisk ? EncryptionService.encryptText(content, sessionPw!) : content,
+        'content': shouldEncryptOnDisk
+            ? EncryptionService.encryptText(content, sessionPw!)
+            : content,
         'isEncrypted': shouldEncryptOnDisk,
         'title': titleText,
         'isTrashed': false,
@@ -199,12 +232,14 @@ _textController.addListener(() {
 
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Saved')));
       }
 
       if (popAfterSave && mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Save failed: $e')));
     }
   }
 
@@ -215,8 +250,7 @@ _textController.addListener(() {
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('Save changes?'),
-          content:
-          const Text('Do you want to save this note before leaving?'),
+          content: const Text('Do you want to save this note before leaving?'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Discard')),
             TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
@@ -248,10 +282,17 @@ _textController.addListener(() {
   }
 
   Future<void> _decryptInEditor() async {
-    final password = await showPasswordDialog(context, "Enter password to decrypt note", false,);
+    final password = await showPasswordDialog(
+      context,
+      "Enter password to decrypt note",
+      false,
+    );
     if (password == null || password.isEmpty) return;
 
-    final decrypted = EncryptionService.decryptText(_textController.text, password,);
+    final decrypted = EncryptionService.decryptText(
+      _textController.text,
+      password,
+    );
 
     if (decrypted != null) {
       if (widget.noteKey != null) {
@@ -269,7 +310,7 @@ _textController.addListener(() {
 
       Future.delayed(
         const Duration(milliseconds: 50),
-            () => _focusNode.requestFocus(),
+        () => _focusNode.requestFocus(),
       );
 
       if (mounted) {
@@ -293,19 +334,32 @@ _textController.addListener(() {
           : _session.sessionPassword;
 
       if (pw == null || pw.isEmpty) {
-        final entered = await showPasswordDialog(context, "Set password to encrypt note", true,);
+        final entered = await showPasswordDialog(
+          context,
+          "Set password to encrypt note",
+          true,
+        );
         if (entered == null || entered.isEmpty) return;
         pw = entered;
 
-        if (widget.noteKey != null) {_session.storeNotePassword(widget.noteKey, pw);} else {_session.sessionPassword = pw;}
+        if (widget.noteKey != null) {
+          _session.storeNotePassword(widget.noteKey, pw);
+        } else {
+          _session.sessionPassword = pw;
+        }
       }
 
-      final encryptedText = EncryptionService.encryptText(_textController.text, pw!,);
+      final encryptedText = EncryptionService.encryptText(
+        _textController.text,
+        pw!,
+      );
 
       final Map newNote = {
         'content': encryptedText,
         'isEncrypted': true,
-        'title': _titleController.text.trim().isEmpty ? null : _titleController.text.trim(),
+        'title': _titleController.text.trim().isEmpty
+            ? null
+            : _titleController.text.trim(),
         'isTrashed': false,
       };
 
@@ -313,7 +367,9 @@ _textController.addListener(() {
         await _notesBox.putAt(widget.index!, newNote);
       } else {
         final List<Map> temp = [Map<String, dynamic>.from(newNote)];
-        temp.addAll(_notesBox.values.map((e) => Map<String, dynamic>.from(e)),);
+        temp.addAll(
+          _notesBox.values.map((e) => Map<String, dynamic>.from(e)),
+        );
         await _notesBox.clear();
         await _notesBox.addAll(temp);
       }
@@ -334,7 +390,11 @@ _textController.addListener(() {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Note encrypted. Password cleared from session; re-enter to decrypt later.',),),
+          const SnackBar(
+            content: Text(
+              'Note encrypted. Password cleared from session; re-enter to decrypt later.',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -346,7 +406,8 @@ _textController.addListener(() {
 
   Future<void> _exportNote() async {
     try {
-      bool isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+      bool isDesktop =
+          Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
       if (!isDesktop) {
         var status = await Permission.storage.status;
@@ -362,7 +423,9 @@ _textController.addListener(() {
       }
 
       final dir = await getApplicationDocumentsDirectory();
-      final raw = _titleController.text.trim().isNotEmpty ? _titleController.text.trim() : 'note_${DateTime.now().millisecondsSinceEpoch}';
+      final raw = _titleController.text.trim().isNotEmpty
+          ? _titleController.text.trim()
+          : 'note_${DateTime.now().millisecondsSinceEpoch}';
 
       String filename = raw;
       if (!filename.toLowerCase().endsWith('.txt')) {
@@ -382,15 +445,19 @@ _textController.addListener(() {
     }
   }
 
-
   // Scroll to a given range
   void _scrollToRange(TextRange range) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final pos = range.start;
       final text = _textController.text;
-      final before = text.substring(0, pos).split('\n').length; // approx line number
+      final before =
+          text.substring(0, pos).split('\n').length; // approx line number
       final offset = (before - 1) * 22.0; // approx line height
-      _scrollController.animateTo(offset, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,);
+      _scrollController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
     });
   }
 
@@ -398,7 +465,11 @@ _textController.addListener(() {
     final result = await showModalBottomSheet<SearchReplaceResult>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => SearchReplaceSheet(controller: _textController, highlightNotifier: _highlights,currentMatchNotifier: _currentMatchIndex,),
+      builder: (_) => SearchReplaceSheet(
+        controller: _textController,
+        highlightNotifier: _highlights,
+        currentMatchNotifier: _currentMatchIndex,
+      ),
     );
 
     if (result != null && result.jumpTo != null) {
@@ -408,16 +479,18 @@ _textController.addListener(() {
 
   // Build highlighted text behind transparent editor
   Widget _buildHighlightedText() {
+    if (!_enableHighlighting) {
+    final text = _textController.text;
+    if (text.isEmpty) {return const SizedBox.shrink();}
+
+    return Text(text, softWrap: true, style: const TextStyle(color: Colors.white70, fontSize: 16, height: 1.4,),);
+  }
     return ValueListenableBuilder<List<TextRange>>(
       valueListenable: _highlights,
       builder: (context, ranges, _) {
         final text = _textController.text;
-        if (text.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        if (ranges.isEmpty) {
-          return Text(text, style: const TextStyle(color: Colors.white70, fontSize: 16),);
-        }
+        if (text.isEmpty) {return const SizedBox.shrink();}
+        if (ranges.isEmpty) {return Text(text, style: const TextStyle(color: Colors.white70, fontSize: 16),);}
 
         ranges = List.from(ranges)..sort((a, b) => a.start.compareTo(b.start));
         final spans = <TextSpan>[];
@@ -433,21 +506,32 @@ _textController.addListener(() {
 
           spans.add(TextSpan(
             text: text.substring(r.start, r.end),
-            style: TextStyle(backgroundColor: isCurrentMatch ? Colors.orange : const Color(0xFF4444AA), color: Colors.white,),
+            style: TextStyle(
+              backgroundColor:
+                  isCurrentMatch ? Colors.orange : const Color(0xFF4444AA),
+              color: Colors.white,
+            ),
           ));
           cursor = r.end;
         }
 
-        if (cursor < text.length) {spans.add(TextSpan(text: text.substring(cursor)));}
+        if (cursor < text.length) {
+          spans.add(TextSpan(text: text.substring(cursor)));
+        }
 
-        return Text.rich(TextSpan(children: spans), softWrap: true, style: const TextStyle(fontSize: 16, height: 1.4),);
+        return Text.rich(
+          TextSpan(children: spans),
+          softWrap: true,
+          style: const TextStyle(fontSize: 16, height: 1.4),
+        );
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canInsertTime = !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
+    final canInsertTime =
+        !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
 
     return RawKeyboardListener(
       focusNode: FocusNode(),
@@ -458,13 +542,19 @@ _textController.addListener(() {
           appBar: AppBar(
             title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
             actions: [
-              IconButton(icon: const Icon(Icons.search), onPressed: _openSearchReplace),
-              IconButton(icon: const Icon(Icons.access_time), onPressed: canInsertTime ? _insertCurrentTime : null,),
-              IconButton(icon: const Icon(Icons.copy), onPressed: _copyToClipboard),
-              IconButton(icon: Icon( _isReadOnlyEncrypted ? Icons.lock_open : Icons.enhanced_encryption,), onPressed: _isReadOnlyEncrypted ? _decryptInEditor : _encryptInEditor,),
-              IconButton(icon: const Icon(Icons.download_outlined), onPressed: _exportNote),
-              IconButton(icon: const Icon(Icons.save), onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),),
+              IconButton(icon: const Icon(Icons.access_time, color: Colors.amber), onPressed: canInsertTime ? _insertCurrentTime : null,),
+              IconButton(icon: const Icon(Icons.save, color: Colors.amber), onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),),
+              PopupMenuButton<String>(
+                onSelected: _handleEditorMenuAction,
+                itemBuilder: (_) => [
+                  if (_enableHighlighting) const PopupMenuItem(value: 'search', child: ListTile(leading: Icon(Icons.search), title: Text('Search'),),),                  
+                  const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.content_copy), title: Text('Copy'),),),
+                  PopupMenuItem(value: 'encrypt', child: ListTile(leading: Icon(_isReadOnlyEncrypted ? Icons.lock_open : Icons.lock_outline), title: Text(_isReadOnlyEncrypted ? 'Decrypt' : 'Encrypt'),),),  
+                  const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.file_download), title: Text('Export'),),),
+                ],
+              ),
             ],
+
           ),
           body: Padding(
             padding: const EdgeInsets.all(12),
@@ -472,13 +562,11 @@ _textController.addListener(() {
               children: [
                 TextField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Title',
-                    hintText: 'Identifying name (not encrypted)',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Title', hintText: 'Identifying name (not encrypted)',),
                   onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) =>
-                      FocusScope.of(context).requestFocus(_focusNode),
+                  onSubmitted: (_) => FocusScope.of(context).requestFocus(_focusNode),
+                  enableSuggestions: false,
+                  autocorrect: false,
                 ),
                 const SizedBox(height: 8),
                 Expanded(
@@ -493,7 +581,7 @@ _textController.addListener(() {
                       controller: _textController,
                       focusNode: _focusNode,
                       // Important: Pass the scroll controller here so _scrollToRange works
-                      scrollController: _scrollController, 
+                      scrollController: _scrollController,
                       readOnly: _isReadOnlyEncrypted,
                       maxLines: null,
                       expands: true, // Fills the Expanded parent
@@ -504,13 +592,13 @@ _textController.addListener(() {
                       ),
                       // CHANGE 7: Restore normal styles and physics
                       style: const TextStyle(
-                        fontSize: 16, 
-                        height: 1.4, 
-                        color: Colors.black // Ensure text is visible
-                      ),
+                          fontSize: 16,
+                          height: 1.4,
+                          color: Colors.black // Ensure text is visible
+                          ),
                       cursorColor: Colors.blue,
                       // Use normal physics or AlwaysScrollableScrollPhysics
-                      scrollPhysics: const AlwaysScrollableScrollPhysics(), 
+                      scrollPhysics: const AlwaysScrollableScrollPhysics(),
                     ),
                   ),
                 ),
@@ -544,8 +632,7 @@ _textController.addListener(() {
         "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ";
 
     final text = _textController.text;
-    final newText =
-    text.replaceRange(sel.start, sel.end, timeStr);
+    final newText = text.replaceRange(sel.start, sel.end, timeStr);
     _textController.text = newText;
     _textController.selection =
         TextSelection.collapsed(offset: sel.start + timeStr.length);
@@ -564,7 +651,8 @@ class HighlightTextEditingController extends TextEditingController {
 
   HighlightTextEditingController({
     required String text,
-    this.baseStyle = const TextStyle(fontSize: 16, height: 1.4, color: Colors.black),
+    this.baseStyle =
+        const TextStyle(fontSize: 16, height: 1.4, color: Colors.black),
   }) : super(text: text);
 
   @override

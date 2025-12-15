@@ -6,6 +6,7 @@ class HelpScreen extends StatelessWidget {
     {'icon': 'New note', 'explain': 'Create a new note'},
     {'icon': 'Move to trash', 'explain': 'Move selected notes to Trash. Use the restore or permanently delete options from the Trash page.'},
     {'icon': 'Encrypt all', 'explain': 'Encrypt all notes that are currently in temporary decrypted state (also clears session passwords). This is an emergency button to protect the decrypted notes quickly.'},
+    {'icon': 'Merge', 'explain': 'Merge selected notes into a single note. Encrypted notes will prompt for passwords as needed. Notes are merged in their current order, with each note’s title followed by its contents.'},    
     {'icon': 'Export to disk', 'explain': 'Export notes to disk (if any notes are selected only those notes will be exported; otherwise all notes will be exported to disk). . In Android this would usually be in the folder `Android/com.simple_notes/`. In Linux it would usually be in the `~/Documents/` folder. Each note will be a text file with the note title being the filename.'},
     {'icon': 'Import from disk', 'explain': 'Import one or more notes from .txt files. The notes may be in encrypted form (in a format recognized by Simple Notes) or plain text.'},
     {'icon': 'Insert time', 'explain': 'Insert current time into note at the cursor position (enabled when editing)'},
@@ -22,6 +23,8 @@ class HelpScreen extends StatelessWidget {
         return Icons.add;
       case 'Move to trash':
         return Icons.delete;
+      case 'Merge':
+        return Icons.merge_type;        
       case 'Encrypt all':
         return Icons.lock;
       case 'Export to disk':
