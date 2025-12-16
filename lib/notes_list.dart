@@ -11,8 +11,11 @@ import 'edit_note.dart';
 import 'help.dart';
 import 'trash.dart';
 import 'about.dart';
+import 'settings.dart';
 import 'package:file_picker/file_picker.dart';
 import 'password_dialog.dart';
+import 'package:open_filex/open_filex.dart';
+
 
 class NotesListScreen extends StatefulWidget {
   @override
@@ -72,6 +75,64 @@ class _NotesListScreenState extends State<NotesListScreen> {
           .showSnackBar(SnackBar(content: Text('Failed to encrypt all: $e')));
     }
   }
+
+Future<String?> _pickExportDirectory() async {
+  final settingsBox = Hive.box('settings');
+
+  // Ask user
+  final String? dir = await FilePicker.platform.getDirectoryPath(
+    dialogTitle: 'Select export folder',
+  );
+
+  if (dir == null) return null;
+
+  // Save as default?
+  final saveDefault = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Set as default?'),
+      content: const Text(
+        'Use this folder as the default export location?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('No'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Yes'),
+        ),
+      ],
+    ),
+  );
+
+  if (saveDefault == true) {
+    settingsBox.put('exportDir', dir);
+  }
+
+  return dir;
+}
+
+Future<Directory> _getDefaultExportDirectory() async {
+  if (Platform.isAndroid) {
+    final dir = await getExternalStorageDirectory();
+    final exportDir = Directory('${dir!.path}/exports');
+    await exportDir.create(recursive: true);
+    return exportDir;
+  } else {
+    final dir = await getApplicationDocumentsDirectory();
+    final exportDir = Directory('${dir.path}/exports');
+    await exportDir.create(recursive: true);
+    return exportDir;
+  }
+}
+Future<bool> _ensureStoragePermission() async {
+  if (!Platform.isAndroid) return true;
+
+  final status = await Permission.manageExternalStorage.request();
+  return status.isGranted;
+}
 
   // Move selected notes to trash
   Future<void> _moveSelectedToTrash() async {
@@ -206,6 +267,52 @@ class _NotesListScreenState extends State<NotesListScreen> {
     }
   }
 
+Future<Directory> _resolveExportDirectory() async {
+  final settingsBox = Hive.box('settings');
+
+  // 1. Use saved directory if available
+  final savedPath = settingsBox.get('exportDir');
+  if (savedPath is String && savedPath.isNotEmpty) {
+    final dir = Directory(savedPath);
+    if (await dir.exists()) return dir;
+  }
+
+  // 2. Otherwise ask the user
+  final picked = await _pickExportDirectory();
+  if (picked != null) {
+    final dir = Directory(picked);
+    await dir.create(recursive: true);
+    return dir;
+  }
+
+  // 3. Final fallback (safe app directory)
+  return await _getDefaultExportDirectory();
+}
+
+void _showExportSuccess(String path) {
+  showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Export successful'),
+      content: Text('Saved to:\n$path'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OK'),
+        ),
+        TextButton(
+          onPressed: () {
+            OpenFilex.open(path);
+            Navigator.pop(context);
+          },
+          child: const Text('Open Folder'),
+        ),
+      ],
+    ),
+  );
+}
+
+
   // Helper: find next available copy title e.g., "Name_copy1", "_copy2", etc.
   String _nextCopyTitle(String base) {
     final existingTitles = <String>{};
@@ -225,84 +332,80 @@ class _NotesListScreenState extends State<NotesListScreen> {
   }
 
   // Import notes (txt files) — title used as filename base (without extension)
-  Future<void> _importNotes() async {
-    try {
-      FilePickerResult? res = await FilePicker.platform.pickFiles(
-          allowMultiple: true,
-          type: FileType.custom,
-          allowedExtensions: ['txt']);
-      if (res == null) return;
-      for (var file in res.files) {
-        if (file.path == null) continue;
-        final content = await File(file.path!).readAsString();
-        final isEncrypted = content.startsWith('[ENCRYPTED]');
-        final titleGuess = p.basenameWithoutExtension(file.path!);
-        final newNote = {
-          'content': content,
-          'isEncrypted': isEncrypted,
-          'title': titleGuess.isEmpty ? null : titleGuess,
-          'isTrashed': false,
-        };
-        await notesBox.add(newNote);
-      }
-      if (mounted) setState(() {});
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+Future<void> _importNotes() async {
+  try {
+    final settingsBox = Hive.box('settings');
+    final defaultDir = settingsBox.get('importDir');
+
+    FilePickerResult? res = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      initialDirectory: defaultDir,
+      type: FileType.custom,
+      allowedExtensions: ['txt'],
+    );
+    if (res == null) return;
+
+    for (var file in res.files) {
+      if (file.path == null) continue;
+      final content = await File(file.path!).readAsString();
+      final isEncrypted = content.startsWith('[ENCRYPTED]');
+      final titleGuess = p.basenameWithoutExtension(file.path!);
+
+      await notesBox.add({
+        'content': content,
+        'isEncrypted': isEncrypted,
+        'title': titleGuess,
+        'isTrashed': false,
+      });
     }
+
+    if (mounted) setState(() {});
+  } catch (e) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Import failed: $e')));
   }
+}
 
   // Export selected notes if any selected, else export all notes to folder; uses title as filename if present, otherwise unique ordinal
-  Future<void> _exportAllOrSelected() async {
-    try {
-      bool isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
-      if (!isDesktop) {
-        var status = await Permission.storage.status;
-        if (!status.isGranted) status = await Permission.storage.request();
-        if (!status.isGranted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Storage permission denied.')));
-          return;
-        }
-      }
-
-      final dir = await getApplicationDocumentsDirectory();
-      final exportDir = Directory(p.join(dir.path, 'simple_notes_export'));
-      await exportDir.create(recursive: true);
-
-      final keysToExport = _selectedKeys.isNotEmpty
-          ? List<dynamic>.from(_selectedKeys)
-          : List<dynamic>.from(notesBox.keys);
-
-      int ordinal = 1;
-      for (final key in keysToExport) {
-        try {
-          final n = await notesBox.get(key) as Map?;
-          if (n == null) continue;
-          if (n['isTrashed'] ?? false) continue;
-          final title = (n['title'] as String?)?.trim();
-          String filename;
-          if (title != null && title.isNotEmpty) {
-            filename = title;
-          } else {
-            filename = 'note_${ordinal++}';
-          }
-          if (!filename.toLowerCase().endsWith('.txt'))
-            filename = '$filename.txt';
-          final path = p.join(exportDir.path, filename);
-          await File(path).writeAsString(n['content']);
-        } catch (e) {
-          // ignore per-file errors
-        }
-      }
-
+Future<void> _exportAllOrSelected() async {
+  try {
+    if (!await _ensureStoragePermission()) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported notes to ${exportDir.path}')));
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+        const SnackBar(content: Text('Storage permission denied')),
+      );
+      return;
     }
+
+    final exportDir = await _resolveExportDirectory();
+
+    final keysToExport = _selectedKeys.isNotEmpty
+        ? List<dynamic>.from(_selectedKeys)
+        : List<dynamic>.from(notesBox.keys);
+
+    int ordinal = 1;
+    for (final key in keysToExport) {
+      final n = notesBox.get(key);
+      if (n == null || (n['isTrashed'] ?? false)) continue;
+
+      final title = (n['title'] as String?)?.trim();
+      String filename =
+          (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
+
+      if (!filename.toLowerCase().endsWith('.txt')) {
+        filename = '$filename.txt';
+      }
+
+      final filePath = p.join(exportDir.path, filename);
+      await File(filePath).writeAsString(n['content']);
+    }
+
+    _showExportSuccess(exportDir.path);
+  } catch (e) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Export failed: $e')));
   }
+}
+
 
   Future<void> _mergeSelectedNotes() async {
     try {
@@ -696,6 +799,17 @@ class _NotesListScreenState extends State<NotesListScreen> {
             DrawerHeader(
                 child: Text('Menu',
                     style: Theme.of(context).textTheme.headlineSmall)),
+            ListTile(
+  leading: const Icon(Icons.settings),
+  title: const Text('Settings'),
+  onTap: () {
+    Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  },
+),
             ListTile(
               leading: const Icon(Icons.help_outline),
               title: const Text('Help'),
