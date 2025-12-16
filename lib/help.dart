@@ -3,24 +3,24 @@ import 'package:flutter/material.dart';
 
 class HelpScreen extends StatelessWidget {
   final List<Map<String, String>> items = [
-    {'icon': 'New note', 'explain': 'Create a new note'},
-    {'icon': 'Move to trash', 'explain': 'Move selected notes to Trash. Use the restore or permanently delete options from the Trash page.'},
+    {'icon': 'New note', 'explain': 'Create a new note.'},
+    {'icon': 'Move to trash', 'explain': 'Move selected notes to Trash. Use the `restore` or `permanently delete` options from the Trash page.'},
     {'icon': 'Encrypt all', 'explain': 'Encrypt all notes that are currently in temporary decrypted state (also clears session passwords). This is an emergency button to protect the decrypted notes quickly.'},
     {'icon': 'Merge', 'explain': 'Merge selected notes into a single note. Encrypted notes will prompt for passwords as needed. Notes are merged in their current order, with each note’s title followed by its contents.'},    
-    {'icon': 'Export to disk', 'explain': 'Export notes to disk (if any notes are selected only those notes will be exported; otherwise all notes will be exported to disk). . In Android this would usually be in the folder `Android/com.simple_notes/`. In Linux it would usually be in the `~/Documents/` folder. Each note will be a text file with the note title being the filename.'},
+    {'icon': 'Export to disk', 'explain': 'Saves notes to disk as a text file (if any notes are selected only those notes will be exported; otherwise all notes will be saved to disk). See the Settings page to know which folder it would be saved to. Each note will be a text file with the note title being the filename.'},
     {'icon': 'Import from disk', 'explain': 'Import one or more notes from .txt files. The notes may be in encrypted form (in a format recognized by Simple Notes) or plain text.'},
-    {'icon': 'Insert time', 'explain': 'Insert current time into note at the cursor position (enabled when editing)'},
-    {'icon': 'Copy to clipboard', 'explain': 'Copy note contents to clipboard'},
-    {'icon': 'Duplicate', 'explain': 'Duplicate the selected note(s)'},
-    {'icon': 'Encrypt/Decrypt', 'explain': 'Encrypt or decrypt the current note.'},
-    {'icon': 'Save', 'explain': 'Save note to the Simple Notes Hive database. Ctrl+S also saves on Linux.'},
+    {'icon': 'Insert time', 'explain': 'Insert current time into note at the cursor position (enabled when editing).'},
+    {'icon': 'Copy to clipboard', 'explain': 'Copy the title and note contents to clipboard.'},
+    {'icon': 'Duplicate', 'explain': 'Duplicate the selected note(s).'},
+    {'icon': 'Encrypt/Decrypt', 'explain': 'Encrypt or decrypt the current note. The algorithm used for encryption is the one selected in Settings. While decrypting it will automatically choose the correct algorithm by trying the algorithms one by one.'},
+    {'icon': 'Save', 'explain': 'Save note to the Simple Notes Hive database (not to a text file). Ctrl+S also saves on Linux.'},
     {'icon': 'Search', 'explain': 'Find & Replace: Ctrl+F to open search on Linux.'},
   ];
 
   IconData _iconFromName(String name) {
     switch (name) {
       case 'New note':
-        return Icons.add;
+        return Icons.add_circle;
       case 'Move to trash':
         return Icons.delete;
       case 'Merge':

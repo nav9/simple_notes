@@ -65,13 +65,6 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     final content = widget.note ?? '';
     // Initialize tracker
     _lastKnownText = content;    
-    // _textController = HighlightTextEditingController(
-    //   text: content,
-    //   baseStyle: const TextStyle(
-    //       color: Colors.white, // Or Colors.white if dark mode
-    //       fontSize: 16,
-    //       height: 1.4),
-    // );
     if (_enableHighlighting) {_textController = HighlightTextEditingController(text: content, baseStyle: const TextStyle(fontSize: 16, height: 1.4),);} 
     else {_textController = HighlightTextEditingController(text: content, baseStyle: const TextStyle(fontSize: 16, height: 1.4),)
         ..highlights = []; // no highlights ever
@@ -157,9 +150,6 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       case 'encrypt':
         _isReadOnlyEncrypted ? _decryptInEditor() : _encryptInEditor();
         break;
-      // case 'export':
-      //   _exportNote();
-      //   break;
     }
   }
 
@@ -177,14 +167,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   bool get _isDirty {
     final currentText = _textController.text;
     final currentTitle = _titleController.text;
-    if (_originalTextSnapshot != null && currentText != _originalTextSnapshot)
-      return true;
-    if (_originalTitleSnapshot != null &&
-        currentTitle != _originalTitleSnapshot) return true;
-    if (_originalTextSnapshot == null && currentText.trim().isNotEmpty)
-      return true;
-    if (_originalTitleSnapshot == null && currentTitle.trim().isNotEmpty)
-      return true;
+    if (_originalTextSnapshot != null && currentText != _originalTextSnapshot) return true;
+    if (_originalTitleSnapshot != null && currentTitle != _originalTitleSnapshot) return true;
+    if (_originalTextSnapshot == null && currentText.trim().isNotEmpty) return true;
+    if (_originalTitleSnapshot == null && currentTitle.trim().isNotEmpty) return true;
     return false;
   }
 
@@ -280,24 +266,14 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   }
 
   Future<void> _decryptInEditor() async {
-    final password = await showPasswordDialog(
-      context,
-      "Enter password to decrypt note",
-      false,
-    );
+    final password = await showPasswordDialog(context, "Enter password to decrypt note", false,);
     if (password == null || password.isEmpty) return;
 
-    final decrypted = EncryptionService.decryptText(
-      _textController.text,
-      password,
-    );
+    final decrypted = EncryptionService.decryptText(_textController.text, password,);
 
     if (decrypted != null) {
-      if (widget.noteKey != null) {
-        _session.storeNotePassword(widget.noteKey, password);
-      } else {
-        _session.sessionPassword = password;
-      }
+      if (widget.noteKey != null) {_session.storeNotePassword(widget.noteKey, password);} 
+      else {_session.sessionPassword = password;}
 
       setState(() {
         _textController.text = decrypted;
@@ -306,30 +282,17 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         _isReadOnlyEncrypted = false;
       });
 
-      Future.delayed(
-        const Duration(milliseconds: 50),
-        () => _focusNode.requestFocus(),
-      );
+      Future.delayed(const Duration(milliseconds: 50),() => _focusNode.requestFocus(),);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Decrypted successfully')),
-        );
-      }
+      if (mounted) {ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decrypted successfully')),);}
     } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Decryption failed. Wrong password?')),
-        );
-      }
+      if (mounted) {ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Decryption failed. Wrong password?')),);}
     }
   }
 
   Future<void> _encryptInEditor() async {
     try {
-      String? pw = widget.noteKey != null
-          ? _session.getNotePassword(widget.noteKey)
-          : _session.sessionPassword;
+      String? pw = widget.noteKey != null ? _session.getNotePassword(widget.noteKey) : _session.sessionPassword;
 
       if (pw == null || pw.isEmpty) {
         final entered = await showPasswordDialog(context, "Set password to encrypt note", true,);
@@ -368,47 +331,6 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Encryption failed: $e')),);
     }
   }
-
-  // Future<void> _exportNote() async {
-  //   try {
-  //     bool isDesktop =
-  //         Platform.isLinux || Platform.isWindows || Platform.isMacOS;
-
-  //     if (!isDesktop) {
-  //       var status = await Permission.storage.status;
-  //       if (!status.isGranted) {
-  //         status = await Permission.storage.request();
-  //       }
-  //       if (!status.isGranted) {
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           const SnackBar(content: Text('Storage permission denied.')),
-  //         );
-  //         return;
-  //       }
-  //     }
-
-  //     final dir = await getApplicationDocumentsDirectory();
-  //     final raw = _titleController.text.trim().isNotEmpty
-  //         ? _titleController.text.trim()
-  //         : 'note_${DateTime.now().millisecondsSinceEpoch}';
-
-  //     String filename = raw;
-  //     if (!filename.toLowerCase().endsWith('.txt')) {
-  //       filename = '$filename.txt';
-  //     }
-
-  //     final fullPath = p.join(dir.path, filename);
-  //     await File(fullPath).writeAsString(_textController.text);
-
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(content: Text('Saved to $fullPath')),
-  //     );
-  //   } catch (e) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       SnackBar(content: Text('Export failed: $e')),
-  //     );
-  //   }
-  // }
 
   // Scroll to a given range
   void _scrollToRange(TextRange range) {

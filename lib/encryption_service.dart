@@ -11,14 +11,8 @@ class EncryptionService {
 
   /// Registry of supported algorithms
   static final Map<String, _Algo> _algorithms = {
-    'aes256': _Algo(
-      encrypt: _encryptAES256,
-      decrypt: _decryptAES256,
-    ),
-    'fernet': _Algo(
-      encrypt: _encryptFernet,
-      decrypt: _decryptFernet,
-    ),
+    'aes256': _Algo(encrypt: _encryptAES256, decrypt: _decryptAES256,),
+    'fernet': _Algo(encrypt: _encryptFernet, decrypt: _decryptFernet,),
   };
 
   /// Algorithms enabled in Settings
@@ -76,17 +70,10 @@ static String? _decryptAES256(String payload, String password) {
     final cipherText = raw.sublist(16);
 
     final key = encrypt.Key.fromUtf8(password.padRight(32, '\0'));
-    final aes = encrypt.AES(
-      key,
-      mode: encrypt.AESMode.cbc,
-      padding: 'PKCS7',
-    );
+    final aes = encrypt.AES(key, mode: encrypt.AESMode.cbc,padding: 'PKCS7',);
 
     final encrypter = encrypt.Encrypter(aes);
-    return encrypter.decrypt(
-      encrypt.Encrypted(cipherText),
-      iv: iv,
-    );
+    return encrypter.decrypt(encrypt.Encrypted(cipherText),iv: iv,);
   } catch (_) {
     return null;
   }

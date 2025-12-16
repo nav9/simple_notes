@@ -275,27 +275,6 @@ Future<Directory> _resolveExportDirectory() async {
   return baseDir;
 }
 
-// Future<Directory> _resolveExportDirectory() async {
-//   final settingsBox = Hive.box('settings');
-
-//   // 1. Use saved directory if available
-//   final savedPath = settingsBox.get('exportDir');
-//   if (savedPath is String && savedPath.isNotEmpty) {
-//     final dir = Directory(savedPath);
-//     if (await dir.exists()) return dir;
-//   }
-
-//   // 2. Otherwise ask the user
-//   final picked = await _pickExportDirectory();
-//   if (picked != null) {
-//     final dir = Directory(picked);
-//     await dir.create(recursive: true);
-//     return dir;
-//   }
-
-//   // 3. Final fallback (safe app directory)
-//   return await _getDefaultExportDirectory();
-// }
 
 void _showExportSuccess(String path) {
   showDialog(
@@ -342,12 +321,7 @@ Future<void> _importNotes() async {
     final settings = Hive.box('settings');
     final defaultDir = (await resolveFolderSetting('importDir')).path;
 
-    final res = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      initialDirectory: defaultDir,
-      type: FileType.custom,
-      allowedExtensions: ['txt'],
-    );
+    final res = await FilePicker.platform.pickFiles(allowMultiple: true, initialDirectory: defaultDir, type: FileType.custom,allowedExtensions: ['txt'],);
 
     if (res == null) return;
 
@@ -368,40 +342,6 @@ Future<void> _importNotes() async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
   }
 }
-
-// Future<void> _importNotes() async {
-//   try {
-//     final settingsBox = Hive.box('settings');
-//     final defaultDir = settingsBox.get('importDir');
-
-//     FilePickerResult? res = await FilePicker.platform.pickFiles(
-//       allowMultiple: true,
-//       initialDirectory: defaultDir,
-//       type: FileType.custom,
-//       allowedExtensions: ['txt'],
-//     );
-//     if (res == null) return;
-
-//     for (var file in res.files) {
-//       if (file.path == null) continue;
-//       final content = await File(file.path!).readAsString();
-//       final isEncrypted = content.startsWith('[ENCRYPTED]');
-//       final titleGuess = p.basenameWithoutExtension(file.path!);
-
-//       await notesBox.add({
-//         'content': content,
-//         'isEncrypted': isEncrypted,
-//         'title': titleGuess,
-//         'isTrashed': false,
-//       });
-//     }
-
-//     if (mounted) setState(() {});
-//   } catch (e) {
-//     ScaffoldMessenger.of(context)
-//         .showSnackBar(SnackBar(content: Text('Import failed: $e')));
-//   }
-// }
 
   // Export selected notes if any selected, else export all notes to folder; uses title as filename if present, otherwise unique ordinal
 Future<void> _exportAllOrSelected() async {
@@ -557,8 +497,7 @@ Future<void> _exportAllOrSelected() async {
         final content = note['content'] as String;
         final initialIsEncrypted = (note['isEncrypted'] ?? false) as bool;
         Navigator.push(context,
-          MaterialPageRoute(
-              builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
+          MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
         ).then((_) {if (mounted) setState(() {});});
       },
     );
@@ -625,8 +564,8 @@ Future<void> _exportAllOrSelected() async {
     final multipleSelected = _selectedKeys.length > 1;
 
     return [
-      if (hasSelection) ...[
-        const PopupMenuItem(value: 'select_all',child: ListTile(leading: Icon(Icons.select_all), title: Text('Select All'),),),
+      if (_hasAnyNotes) const PopupMenuItem(value: 'select_all',child: ListTile(leading: Icon(Icons.select_all), title: Text('Select All'),),),
+      if (hasSelection) ...[        
         const PopupMenuItem(value: 'select_none',child: ListTile(leading: Icon(Icons.clear), title: Text('Select None'),),),
         const PopupMenuDivider(),
         const PopupMenuItem(value: 'duplicate',child: ListTile(leading: Icon(Icons.control_point_duplicate),title: Text('Duplicate'),),),
@@ -681,51 +620,7 @@ Future<void> _exportAllOrSelected() async {
               icon: const Icon(Icons.add_circle, color: Colors.lightBlue),
               tooltip: 'New Note',
               onPressed: _createNewNote),
-          // IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
-          // IconButton(icon: const Icon(Icons.download_outlined), tooltip: 'Export notes', onPressed: _exportAllOrSelected),
-          // IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import notes', onPressed: _importNotes),
-          // if (_selectedKeys.isNotEmpty) ...[
-          //   IconButton(icon: const Icon(Icons.select_all), tooltip: 'Select all', onPressed: _selectAll),
-          //   IconButton(icon: const Icon(Icons.clear), tooltip: 'Select none', onPressed: _selectNone),
-          //   IconButton(icon: const Icon(Icons.control_point_duplicate), tooltip: 'Duplicate selected', onPressed: _duplicateSelected),
-          //   IconButton(icon: const Icon(Icons.delete_forever, color: Colors.redAccent), tooltip: 'Move selected to Trash', onPressed: _moveSelectedToTrash),
-          // ],
-          PopupMenuButton<String>(
-            onSelected: _handleMenuAction,
-            itemBuilder: _buildMainMenuItems,
-            // onSelected: (s) {
-            //   switch (s) {
-            //     case 'select_all':
-            //       _selectAll();
-            //       break;
-            //     case 'select_none':
-            //       _selectNone();
-            //       break;
-            //     case 'encrypt_all':
-            //       _encryptAllDecryptedNotes();
-            //       break;
-            //     case 'export_all':
-            //       _exportAllOrSelected();
-            //       break;
-            //     case 'import':
-            //       _importNotes();
-            //       break;
-            //   }
-            // },
-            // itemBuilder: (_) => [
-            //   const PopupMenuItem(
-            //       value: 'select_all', child: Text('Select all')),
-            //   const PopupMenuItem(
-            //       value: 'select_none', child: Text('Select none')),
-            //   const PopupMenuDivider(),
-            //   const PopupMenuItem(
-            //       value: 'encrypt_all',
-            //       child: Text('Encrypt all decrypted notes')),
-            //   const PopupMenuItem(
-            //       value: 'export_all', child: Text('Export notes')),
-            //   const PopupMenuItem(value: 'import', child: Text('Import notes')),
-            // ],
-          ),
+          PopupMenuButton<String>(onSelected: _handleMenuAction, itemBuilder: _buildMainMenuItems,),
         ],
       ),
       drawer: Drawer(
@@ -733,11 +628,11 @@ Future<void> _exportAllOrSelected() async {
           children: [
             DrawerHeader(child: Text('Menu',style: Theme.of(context).textTheme.headlineSmall)),
             ListTile(leading: const Icon(Icons.settings),title: const Text('Settings'),
-  onTap: () {
-    Navigator.pop(context);
-    Navigator.push(context,MaterialPageRoute(builder: (_) => const SettingsScreen()),);
-  },
-),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(context,MaterialPageRoute(builder: (_) => const SettingsScreen()),);
+                    },
+                  ),
             ListTile(
               leading: const Icon(Icons.help_outline),
               title: const Text('Help'),

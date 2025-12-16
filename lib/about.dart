@@ -16,8 +16,7 @@ class AboutScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Simple Notes',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('Simple Notes', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 Text('Version: $version'),
                 const SizedBox(height: 8),

@@ -20,9 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickFolder(String key, String title) async {
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: title,
-    );
+    final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: title,);
     if (dir != null) {
       settingsBox.put(key, dir);
       setState(() {});
@@ -34,17 +32,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeMode = settingsBox.get('themeMode', defaultValue: 'system');
     final exportDir = settingsBox.get('exportDir');
     final importDir = settingsBox.get('importDir');
-    final algo =
-        settingsBox.get('encryptionAlgo', defaultValue: 'aes256');
+    final algo = settingsBox.get('encryptionAlgo', defaultValue: 'aes256');
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-          const ListTile(
-            title: Text('Appearance',
-                style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
+          const ListTile(title: Text('Appearance', style: TextStyle(fontWeight: FontWeight.bold)),),
           RadioListTile(
             title: const Text('System default'),
             value: 'system',
@@ -83,46 +77,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Export folder'),
             subtitle: Text(exportDir ?? 'Not set'),
             trailing: const Icon(Icons.edit),
-            onTap: () =>
-                _pickFolder('exportDir', 'Select export folder'),
+            onTap: () => _pickFolder('exportDir', 'Select export folder'),
           ),
           ListTile(
             leading: const Icon(Icons.folder_open),
             title: const Text('Import folder'),
             subtitle: Text(importDir ?? 'Not set'),
             trailing: const Icon(Icons.edit),
-            onTap: () =>
-                _pickFolder('importDir', 'Select import folder'),
+            onTap: () => _pickFolder('importDir', 'Select import folder'),
           ),
           const Divider(),
 
-          const ListTile(
-            title: Text('Encryption',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+          const ListTile(title: Text('Encryption', style: TextStyle(fontWeight: FontWeight.bold)),),
+          ListTile(
+            leading: const Icon(Icons.security),
+            title: const Text('Encryption algorithm'),
+            trailing: DropdownButton<String>(
+              value: algo,
+              underline: const SizedBox(), // removes ugly underline in ListTile
+              items: const [
+                DropdownMenuItem(value: 'aes256', child: Text('AES-256'),),
+                DropdownMenuItem(value: 'fernet', child: Text('Fernet'),),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                settingsBox.put('encryptionAlgo', v);
+                setState(() {});
+              },
+            ),
           ),
-ListTile(
-  leading: const Icon(Icons.security),
-  title: const Text('Encryption algorithm'),
-  trailing: DropdownButton<String>(
-    value: algo,
-    underline: const SizedBox(), // removes ugly underline in ListTile
-    items: const [
-      DropdownMenuItem(
-        value: 'aes256',
-        child: Text('AES-256'),
-      ),
-      DropdownMenuItem(
-        value: 'fernet',
-        child: Text('Fernet'),
-      ),
-    ],
-    onChanged: (v) {
-      if (v == null) return;
-      settingsBox.put('encryptionAlgo', v);
-      setState(() {});
-    },
-  ),
-),
 
         ],
       ),
