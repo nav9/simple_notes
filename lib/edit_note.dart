@@ -157,9 +157,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       case 'encrypt':
         _isReadOnlyEncrypted ? _decryptInEditor() : _encryptInEditor();
         break;
-      case 'export':
-        _exportNote();
-        break;
+      // case 'export':
+      //   _exportNote();
+      //   break;
     }
   }
 
@@ -404,46 +404,46 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     }
   }
 
-  Future<void> _exportNote() async {
-    try {
-      bool isDesktop =
-          Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+  // Future<void> _exportNote() async {
+  //   try {
+  //     bool isDesktop =
+  //         Platform.isLinux || Platform.isWindows || Platform.isMacOS;
 
-      if (!isDesktop) {
-        var status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-        if (!status.isGranted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage permission denied.')),
-          );
-          return;
-        }
-      }
+  //     if (!isDesktop) {
+  //       var status = await Permission.storage.status;
+  //       if (!status.isGranted) {
+  //         status = await Permission.storage.request();
+  //       }
+  //       if (!status.isGranted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(content: Text('Storage permission denied.')),
+  //         );
+  //         return;
+  //       }
+  //     }
 
-      final dir = await getApplicationDocumentsDirectory();
-      final raw = _titleController.text.trim().isNotEmpty
-          ? _titleController.text.trim()
-          : 'note_${DateTime.now().millisecondsSinceEpoch}';
+  //     final dir = await getApplicationDocumentsDirectory();
+  //     final raw = _titleController.text.trim().isNotEmpty
+  //         ? _titleController.text.trim()
+  //         : 'note_${DateTime.now().millisecondsSinceEpoch}';
 
-      String filename = raw;
-      if (!filename.toLowerCase().endsWith('.txt')) {
-        filename = '$filename.txt';
-      }
+  //     String filename = raw;
+  //     if (!filename.toLowerCase().endsWith('.txt')) {
+  //       filename = '$filename.txt';
+  //     }
 
-      final fullPath = p.join(dir.path, filename);
-      await File(fullPath).writeAsString(_textController.text);
+  //     final fullPath = p.join(dir.path, filename);
+  //     await File(fullPath).writeAsString(_textController.text);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved to $fullPath')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
-    }
-  }
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Saved to $fullPath')),
+  //     );
+  //   } catch (e) {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(content: Text('Export failed: $e')),
+  //     );
+  //   }
+  // }
 
   // Scroll to a given range
   void _scrollToRange(TextRange range) {
@@ -542,15 +542,15 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           appBar: AppBar(
             title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
             actions: [
-              IconButton(icon: const Icon(Icons.access_time, color: Colors.amber), onPressed: canInsertTime ? _insertCurrentTime : null,),
-              IconButton(icon: const Icon(Icons.save, color: Colors.amber), onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),),
+              IconButton(icon: const Icon(Icons.access_time, color: Colors.lightBlue), onPressed: canInsertTime ? _insertCurrentTime : null,),
+              IconButton(icon: const Icon(Icons.save, color: Colors.lightBlue), onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),),
               PopupMenuButton<String>(
                 onSelected: _handleEditorMenuAction,
                 itemBuilder: (_) => [
                   if (_enableHighlighting) const PopupMenuItem(value: 'search', child: ListTile(leading: Icon(Icons.search), title: Text('Search'),),),                  
                   const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.content_copy), title: Text('Copy'),),),
                   PopupMenuItem(value: 'encrypt', child: ListTile(leading: Icon(_isReadOnlyEncrypted ? Icons.lock_open : Icons.lock_outline), title: Text(_isReadOnlyEncrypted ? 'Decrypt' : 'Encrypt'),),),  
-                  const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.file_download), title: Text('Export'),),),
+                  //const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.file_download), title: Text('Export'),),),
                 ],
               ),
             ],

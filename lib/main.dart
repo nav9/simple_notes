@@ -18,34 +18,21 @@ import 'package:path_provider/path_provider.dart';
 import 'notes_list.dart';
 //import 'session_manager.dart';
 
-// Future<void> main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   final appDir = await getApplicationDocumentsDirectory();
-//   await Hive.initFlutter(appDir.path);
-//   await Hive.openBox<Map>('notesBox');
-//   await Hive.openBox('settings');
-
-//   runApp(SimpleNotesApp());
-// }
-
-// class SimpleNotesApp extends StatelessWidget {
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(title: 'Simple Notes', theme: ThemeData.dark(), home: NotesListScreen(),);
-//   }
-// }
-
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Hive.initFlutter();
-
-  // 🔴 REQUIRED: open boxes BEFORE runApp
-  await Hive.openBox<Map>('notesBox');
-  await Hive.openBox('settings');
+  try {
+    await Hive.initFlutter();
+    await Hive.openBox<Map>('notesBox');
+    await Hive.openBox('settings');
+  } catch (e, st) {
+    debugPrint('Startup error: $e');
+    debugPrintStack(stackTrace: st);
+  }
 
   runApp(const SimpleNotesApp());
 }
+
 
 class SimpleNotesApp extends StatelessWidget {
   const SimpleNotesApp({super.key});

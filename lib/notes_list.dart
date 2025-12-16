@@ -36,12 +36,28 @@ class _NotesListScreenState extends State<NotesListScreen> {
     notesBox = Hive.box<Map>('notesBox');
   }
 
+bool get _hasAnyNotes {
+  for (final n in notesBox.values) {
+    if (!(n['isTrashed'] ?? false)) return true;
+  }
+  return false;
+}
+
+bool get _hasDecryptedNotes {
+  for (int i = 0; i < notesBox.length; i++) {
+    final key = notesBox.keyAt(i);
+    if (_session.getNotePassword(key)?.isNotEmpty == true) {
+      return true;
+    }
+  }
+  return false;
+}
+
   // Encrypt all notes that we currently have decrypted in memory (use stored per-note passwords).
   Future<void> _encryptAllDecryptedNotes() async {
     try {
       if (_decryptedNotesCache.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('No decrypted notes in session to encrypt.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No decrypted notes in session to encrypt.')));
         _session.clearAllNotePasswords();
         setState(() {});
         return;
@@ -53,12 +69,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
         if (pw == null || pw.isEmpty) continue;
         final enc = EncryptionService.encryptText(plain, pw);
         final old = notesBox.get(key);
-        final updated = {
-          'content': enc,
-          'isEncrypted': true,
-          'title': old?['title'] ?? null,
-          'isTrashed': old?['isTrashed'] ?? false
-        };
+        final updated = {'content': enc, 'isEncrypted': true, 'title': old?['title'] ?? null, 'isTrashed': old?['isTrashed'] ?? false};
         await notesBox.put(key, updated);
         _decryptedNotesCache.remove(key);
         _session.clearNotePassword(key);
@@ -66,13 +77,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
       _session.clearAllNotePasswords();
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text(
-                'Encrypted session-decrypted notes and cleared passwords.')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypted session-decrypted notes and cleared passwords.')));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to encrypt all: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to encrypt all: $e')));
     }
   }
 
@@ -80,9 +88,7 @@ Future<String?> _pickExportDirectory() async {
   final settingsBox = Hive.box('settings');
 
   // Ask user
-  final String? dir = await FilePicker.platform.getDirectoryPath(
-    dialogTitle: 'Select export folder',
-  );
+  final String? dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder',);
 
   if (dir == null) return null;
 
@@ -91,25 +97,15 @@ Future<String?> _pickExportDirectory() async {
     context: context,
     builder: (_) => AlertDialog(
       title: const Text('Set as default?'),
-      content: const Text(
-        'Use this folder as the default export location?',
-      ),
+      content: const Text('Use this folder as the default export location?',),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('No'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Yes'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No'),),
+        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes'),),
       ],
     ),
   );
 
-  if (saveDefault == true) {
-    settingsBox.put('exportDir', dir);
-  }
+  if (saveDefault == true) {settingsBox.put('exportDir', dir);}
 
   return dir;
 }
@@ -120,13 +116,33 @@ Future<Directory> _getDefaultExportDirectory() async {
     final exportDir = Directory('${dir!.path}/exports');
     await exportDir.create(recursive: true);
     return exportDir;
-  } else {
+  }
+  if (Platform.isLinux) {
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/exports');
     await exportDir.create(recursive: true);
     return exportDir;
   }
+  final dir = await getApplicationDocumentsDirectory();
+  return dir;  
 }
+
+Future<Directory> resolveFolderSetting(String key) async {
+  final settings = Hive.box('settings');
+  final saved = settings.get(key);
+
+  if (saved is String && saved.isNotEmpty) {
+    final dir = Directory(saved);
+    if (await dir.exists()) return dir;
+  }
+
+  // fallback
+  final fallback = await _getDefaultExportDirectory();
+  settings.put(key, fallback.path);
+  return fallback;
+}
+
+
 Future<bool> _ensureStoragePermission() async {
   if (!Platform.isAndroid) return true;
 
@@ -157,8 +173,7 @@ Future<bool> _ensureStoragePermission() async {
           label: 'UNDO',
           onPressed: () async {
             for (final key in List<dynamic>.from(_selectedKeys)) {
-              final n =
-                  Map<String, dynamic>.from(await notesBox.get(key) as Map);
+              final n = Map<String, dynamic>.from(await notesBox.get(key) as Map);
               n['isTrashed'] = false;
               await notesBox.put(key, n);
             }
@@ -173,19 +188,13 @@ Future<bool> _ensureStoragePermission() async {
       _selectedKeys.clear();
       if (mounted) setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Failed to move to trash: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to move to trash: $e')));
     }
   }
 
   // Toggle selection for a key
   void _toggleSelection(dynamic key) {
-    setState(() {
-      if (_selectedKeys.contains(key))
-        _selectedKeys.remove(key);
-      else
-        _selectedKeys.add(key);
-    });
+    setState(() {if (_selectedKeys.contains(key)) _selectedKeys.remove(key); else _selectedKeys.add(key);});
   }
 
   void _selectAll() {
@@ -199,9 +208,7 @@ Future<bool> _ensureStoragePermission() async {
   }
 
   void _selectNone() {
-    setState(() {
-      _selectedKeys.clear();
-    });
+    setState(() {_selectedKeys.clear();});
   }
 
   // Duplicate selected notes
@@ -218,40 +225,22 @@ Future<bool> _ensureStoragePermission() async {
         final nextTitle = _nextCopyTitle(baseTitle);
 
         if (isEncrypted) {
-          final newNote = {
-            'content': note['content'],
-            'isEncrypted': true,
-            'title': nextTitle,
-            'isTrashed': false,
-          };
+          final newNote = {'content': note['content'], 'isEncrypted': true, 'title': nextTitle, 'isTrashed': false,};
           final List<Map> tempList = [Map<String, dynamic>.from(newNote)];
-          tempList
-              .addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+          tempList.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
           await notesBox.clear();
           await notesBox.addAll(tempList);
         } else {
           final sessionPw = _session.getNotePassword(key);
           String? plain;
           if (sessionPw != null && sessionPw.isNotEmpty) {
-            final tryDec = EncryptionService.decryptText(
-                note['content'] as String, sessionPw);
-            if (tryDec != null)
-              plain = tryDec;
-            else
-              plain = note['content'] as String;
-          } else {
-            plain = note['content'] as String;
-          }
+            final tryDec = EncryptionService.decryptText(note['content'] as String, sessionPw);
+            if (tryDec != null) plain = tryDec; else plain = note['content'] as String;
+          } else {plain = note['content'] as String;}
 
-          final newNote = {
-            'content': plain,
-            'isEncrypted': false,
-            'title': nextTitle,
-            'isTrashed': false,
-          };
+          final newNote = {'content': plain, 'isEncrypted': false, 'title': nextTitle, 'isTrashed': false,};
           final List<Map> tempList = [Map<String, dynamic>.from(newNote)];
-          tempList
-              .addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
+          tempList.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
           await notesBox.clear();
           await notesBox.addAll(tempList);
         }
@@ -259,35 +248,50 @@ Future<bool> _ensureStoragePermission() async {
 
       _selectedKeys.clear();
       if (mounted) setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Duplicated selected notes')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicated selected notes')));
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
     }
   }
 
 Future<Directory> _resolveExportDirectory() async {
-  final settingsBox = Hive.box('settings');
+  final settings = Hive.box('settings');
 
-  // 1. Use saved directory if available
-  final savedPath = settingsBox.get('exportDir');
-  if (savedPath is String && savedPath.isNotEmpty) {
-    final dir = Directory(savedPath);
-    if (await dir.exists()) return dir;
-  }
+  // Always start from resolved folder
+  final baseDir = await resolveFolderSetting('exportDir');
+  final picked = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder', initialDirectory: baseDir.path,);
 
-  // 2. Otherwise ask the user
-  final picked = await _pickExportDirectory();
   if (picked != null) {
+    settings.put('exportDir', picked);
     final dir = Directory(picked);
     await dir.create(recursive: true);
     return dir;
   }
 
-  // 3. Final fallback (safe app directory)
-  return await _getDefaultExportDirectory();
+  return baseDir;
 }
+
+// Future<Directory> _resolveExportDirectory() async {
+//   final settingsBox = Hive.box('settings');
+
+//   // 1. Use saved directory if available
+//   final savedPath = settingsBox.get('exportDir');
+//   if (savedPath is String && savedPath.isNotEmpty) {
+//     final dir = Directory(savedPath);
+//     if (await dir.exists()) return dir;
+//   }
+
+//   // 2. Otherwise ask the user
+//   final picked = await _pickExportDirectory();
+//   if (picked != null) {
+//     final dir = Directory(picked);
+//     await dir.create(recursive: true);
+//     return dir;
+//   }
+
+//   // 3. Final fallback (safe app directory)
+//   return await _getDefaultExportDirectory();
+// }
 
 void _showExportSuccess(String path) {
   showDialog(
@@ -296,13 +300,10 @@ void _showExportSuccess(String path) {
       title: const Text('Export successful'),
       content: Text('Saved to:\n$path'),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('OK'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'),),
         TextButton(
           onPressed: () {
-            OpenFilex.open(path);
+            if (!Platform.isLinux) {OpenFilex.open(path);}
             Navigator.pop(context);
           },
           child: const Text('Open Folder'),
@@ -334,53 +335,81 @@ void _showExportSuccess(String path) {
   // Import notes (txt files) — title used as filename base (without extension)
 Future<void> _importNotes() async {
   try {
-    final settingsBox = Hive.box('settings');
-    final defaultDir = settingsBox.get('importDir');
+    final settings = Hive.box('settings');
+    final defaultDir = (await resolveFolderSetting('importDir')).path;
 
-    FilePickerResult? res = await FilePicker.platform.pickFiles(
+    final res = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       initialDirectory: defaultDir,
       type: FileType.custom,
       allowedExtensions: ['txt'],
     );
+
     if (res == null) return;
 
-    for (var file in res.files) {
-      if (file.path == null) continue;
-      final content = await File(file.path!).readAsString();
-      final isEncrypted = content.startsWith('[ENCRYPTED]');
-      final titleGuess = p.basenameWithoutExtension(file.path!);
+    // Save folder user actually used
+    final usedPath = p.dirname(res.files.first.path!);
+    settings.put('importDir', usedPath);
 
-      await notesBox.add({
-        'content': content,
-        'isEncrypted': isEncrypted,
-        'title': titleGuess,
-        'isTrashed': false,
-      });
+    for (final f in res.files) {
+      final content = await File(f.path!).readAsString();
+      final isEncrypted = content.startsWith('[ENCRYPTED]');
+      final title = p.basenameWithoutExtension(f.path!);
+
+      await notesBox.add({'content': content, 'isEncrypted': isEncrypted, 'title': title, 'isTrashed': false,});
     }
 
     if (mounted) setState(() {});
   } catch (e) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
   }
 }
+
+// Future<void> _importNotes() async {
+//   try {
+//     final settingsBox = Hive.box('settings');
+//     final defaultDir = settingsBox.get('importDir');
+
+//     FilePickerResult? res = await FilePicker.platform.pickFiles(
+//       allowMultiple: true,
+//       initialDirectory: defaultDir,
+//       type: FileType.custom,
+//       allowedExtensions: ['txt'],
+//     );
+//     if (res == null) return;
+
+//     for (var file in res.files) {
+//       if (file.path == null) continue;
+//       final content = await File(file.path!).readAsString();
+//       final isEncrypted = content.startsWith('[ENCRYPTED]');
+//       final titleGuess = p.basenameWithoutExtension(file.path!);
+
+//       await notesBox.add({
+//         'content': content,
+//         'isEncrypted': isEncrypted,
+//         'title': titleGuess,
+//         'isTrashed': false,
+//       });
+//     }
+
+//     if (mounted) setState(() {});
+//   } catch (e) {
+//     ScaffoldMessenger.of(context)
+//         .showSnackBar(SnackBar(content: Text('Import failed: $e')));
+//   }
+// }
 
   // Export selected notes if any selected, else export all notes to folder; uses title as filename if present, otherwise unique ordinal
 Future<void> _exportAllOrSelected() async {
   try {
     if (!await _ensureStoragePermission()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Storage permission denied')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission denied')),);
       return;
     }
 
     final exportDir = await _resolveExportDirectory();
 
-    final keysToExport = _selectedKeys.isNotEmpty
-        ? List<dynamic>.from(_selectedKeys)
-        : List<dynamic>.from(notesBox.keys);
+    final keysToExport = _selectedKeys.isNotEmpty ? List<dynamic>.from(_selectedKeys) : List<dynamic>.from(notesBox.keys);
 
     int ordinal = 1;
     for (final key in keysToExport) {
@@ -388,12 +417,9 @@ Future<void> _exportAllOrSelected() async {
       if (n == null || (n['isTrashed'] ?? false)) continue;
 
       final title = (n['title'] as String?)?.trim();
-      String filename =
-          (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
+      String filename = (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
 
-      if (!filename.toLowerCase().endsWith('.txt')) {
-        filename = '$filename.txt';
-      }
+      if (!filename.toLowerCase().endsWith('.txt')) {filename = '$filename.txt';}
 
       final filePath = p.join(exportDir.path, filename);
       await File(filePath).writeAsString(n['content']);
@@ -401,8 +427,7 @@ Future<void> _exportAllOrSelected() async {
 
     _showExportSuccess(exportDir.path);
   } catch (e) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
   }
 }
 
@@ -439,43 +464,28 @@ Future<void> _exportAllOrSelected() async {
           final sessionPw = _session.getNotePassword(key);
           if (decrypted == null && sessionPw != null) {
             decrypted = EncryptionService.decryptText(content, sessionPw);
-            if (decrypted != null) {
-              passwordCache[key.toString()] = sessionPw;
-            }
+            if (decrypted != null) {passwordCache[key.toString()] = sessionPw;}
           }
 
           // Ask user
           while (decrypted == null) {
-            final pw = await showPasswordDialog(
-              context,
-              'Password for "${note['title'] ?? 'Encrypted note'}"',
-              false,
-            );
+            final pw = await showPasswordDialog(context, 'Password for "${note['title'] ?? 'Encrypted note'}"', false,);
             if (pw == null || pw.isEmpty) return;
             decrypted = EncryptionService.decryptText(content, pw);
-            if (decrypted != null) {
-              passwordCache[key.toString()] = pw;
-            }
+            if (decrypted != null) {passwordCache[key.toString()] = pw;}
           }
 
           content = decrypted;
         }
 
         final title = (note['title'] as String?)?.trim();
-        if (title != null && title.isNotEmpty) {
-          buffer.writeln(title);
-        }
+        if (title != null && title.isNotEmpty) {buffer.writeln(title);}
         buffer.writeln(content);
         buffer.writeln();
       }
 
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final newNote = {
-        'title': 'Merged$timestamp.txt',
-        'content': buffer.toString().trim(),
-        'isEncrypted': false,
-        'isTrashed': false,
-      };
+      final newNote = {'title': 'Merged$timestamp.txt', 'content': buffer.toString().trim(), 'isEncrypted': false, 'isTrashed': false,};
 
       final List<Map> temp = [newNote];
       temp.addAll(notesBox.values.map((e) => Map<String, dynamic>.from(e)));
@@ -484,13 +494,9 @@ Future<void> _exportAllOrSelected() async {
 
       _selectedKeys.clear();
       if (mounted) setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Notes merged successfully')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notes merged successfully')),);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Merge failed: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Merge failed: $e')),);
     }
   }
 
@@ -513,10 +519,8 @@ Future<void> _exportAllOrSelected() async {
         displaySubtitle = _singleLineSnippet(content);
       } else {
         final sessionPw = _session.getNotePassword(key);
-        if (sessionPw != null && sessionPw.isNotEmpty)
-          displaySubtitle = 'Decrypted';
-        else
-          displaySubtitle = '🔒 Encrypted';
+        if (sessionPw != null && sessionPw.isNotEmpty) displaySubtitle = 'Decrypted';
+        else displaySubtitle = '🔒 Encrypted';
       }
     } else {
       if (isEncrypted) {
@@ -533,21 +537,15 @@ Future<void> _exportAllOrSelected() async {
 
     return ListTile(
       key: ValueKey('note_$index'),
-      leading: Checkbox(
-        value: _selectedKeys.contains(key),
-        onChanged: (_) => _toggleSelection(key),
-      ),
+      leading: Checkbox(value: _selectedKeys.contains(key), onChanged: (_) => _toggleSelection(key),),
       title: Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: displaySubtitle.isNotEmpty
-          ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis)
-          : null,
+      subtitle: displaySubtitle.isNotEmpty ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
       trailing: isEncrypted
           ? Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(isDecryptedInSession ? Icons.lock_open : Icons.lock),
               if (isDecryptedInSession) const SizedBox(width: 6),
               if (isDecryptedInSession)
-                const Text('Decrypted',
-                    style: TextStyle(color: Colors.greenAccent))
+                const Text('Decrypted', style: TextStyle(color: Colors.greenAccent))
             ])
           : null,
       onTap: () {
@@ -556,14 +554,8 @@ Future<void> _exportAllOrSelected() async {
         Navigator.push(
           context,
           MaterialPageRoute(
-              builder: (_) => EditNoteScreen(
-                  index: index,
-                  noteKey: key,
-                  note: content,
-                  initialIsEncrypted: initialIsEncrypted)),
-        ).then((_) {
-          if (mounted) setState(() {});
-        });
+              builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
+        ).then((_) {if (mounted) setState(() {});});
       },
     );
   }
@@ -609,25 +601,19 @@ Future<void> _exportAllOrSelected() async {
       for (int i = 0; i < notesBox.length; i++) {
         final k = notesBox.keyAt(i);
         final pw = pwList[i];
-        if (pw != null && pw.isNotEmpty)
-          _session.storeNotePassword(k, pw);
-        else
-          _session.clearNotePassword(k);
+        if (pw != null && pw.isNotEmpty) _session.storeNotePassword(k, pw);
+        else _session.clearNotePassword(k);
       }
 
       if (mounted) setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Reorder failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Reorder failed: $e')));
     }
   }
 
   // New note action in AppBar
   void _createNewNote() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen()))
-        .then((_) {
-      if (mounted) setState(() {});
-    });
+    Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {if (mounted) setState(() {});});
   }
 
   List<PopupMenuEntry<String>> _buildMainMenuItems(BuildContext context) {
@@ -636,73 +622,18 @@ Future<void> _exportAllOrSelected() async {
 
     return [
       if (hasSelection) ...[
-        const PopupMenuItem(
-          value: 'select_all',
-          child: ListTile(
-            leading: Icon(Icons.select_all),
-            title: Text('Select All'),
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'select_none',
-          child: ListTile(
-            leading: Icon(Icons.clear),
-            title: Text('Select None'),
-          ),
-        ),
+        const PopupMenuItem(value: 'select_all',child: ListTile(leading: Icon(Icons.select_all), title: Text('Select All'),),),
+        const PopupMenuItem(value: 'select_none',child: ListTile(leading: Icon(Icons.clear), title: Text('Select None'),),),
         const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'duplicate',
-          child: ListTile(
-            leading: Icon(Icons.control_point_duplicate),
-            title: Text('Duplicate'),
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'export_selected',
-          child: ListTile(
-            leading: Icon(Icons.download_outlined),
-            title: Text('Export'),
-          ),
-        ),
-        if (multipleSelected)
-          const PopupMenuItem(
-            value: 'merge',
-            child: ListTile(
-              leading: Icon(Icons.merge_type),
-              title: Text('Merge'),
-            ),
-          ),
-        const PopupMenuItem(
-          value: 'trash',
-          child: ListTile(
-            leading: Icon(Icons.delete),
-            title: Text('Delete'),
-          ),
-        ),
+        const PopupMenuItem(value: 'duplicate',child: ListTile(leading: Icon(Icons.control_point_duplicate),title: Text('Duplicate'),),),
+        const PopupMenuItem(value: 'export_selected',child: ListTile(leading: Icon(Icons.download_outlined),title: Text('Export'),),),
+        if (multipleSelected) const PopupMenuItem(value: 'merge',child: ListTile(leading: Icon(Icons.merge_type), title: Text('Merge'),),),
+        const PopupMenuItem(value: 'trash',child: ListTile(leading: Icon(Icons.delete), title: Text('Delete'),),),
         const PopupMenuDivider(),
       ],
-      const PopupMenuItem(
-        value: 'encrypt_all',
-        child: ListTile(
-          leading: Icon(Icons.lock),
-          title: Text('Encrypt all decrypted notes'),
-        ),
-      ),
-      const PopupMenuItem(
-        value: 'export_all',
-        child: ListTile(
-          leading: Icon(Icons.file_download),
-          title: Text('Export All'),
-        ),
-      ),
-      const PopupMenuItem(
-        value: 'import',
-        child: ListTile(
-          leading: Icon(Icons.file_upload),
-          title: Text('Import Notes'),
-        ),
-      ),
+      if (_hasDecryptedNotes) const PopupMenuItem(value: 'encrypt_all',child: ListTile(leading: Icon(Icons.lock),title: Text('Encrypt all decrypted notes'),),),
+      if (_hasAnyNotes) const PopupMenuItem(value: 'export_all',child: ListTile(leading: Icon(Icons.file_download),title: Text('Export All'),),),
+      const PopupMenuItem(value: 'import',child: ListTile(leading: Icon(Icons.file_upload),title: Text('Import Notes'),),),
     ];
   }
 
@@ -743,7 +674,7 @@ Future<void> _exportAllOrSelected() async {
         title: const Text('Simple Notes'),
         actions: [
           IconButton(
-              icon: const Icon(Icons.add, color: Colors.greenAccent),
+              icon: const Icon(Icons.add_circle, color: Colors.lightBlue),
               tooltip: 'New Note',
               onPressed: _createNewNote),
           // IconButton(icon: const Icon(Icons.lock), tooltip: 'Encrypt all decrypted notes', onPressed: _encryptAllDecryptedNotes),
@@ -796,18 +727,11 @@ Future<void> _exportAllOrSelected() async {
       drawer: Drawer(
         child: ListView(
           children: [
-            DrawerHeader(
-                child: Text('Menu',
-                    style: Theme.of(context).textTheme.headlineSmall)),
-            ListTile(
-  leading: const Icon(Icons.settings),
-  title: const Text('Settings'),
+            DrawerHeader(child: Text('Menu',style: Theme.of(context).textTheme.headlineSmall)),
+            ListTile(leading: const Icon(Icons.settings),title: const Text('Settings'),
   onTap: () {
     Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-    );
+    Navigator.push(context,MaterialPageRoute(builder: (_) => const SettingsScreen()),);
   },
 ),
             ListTile(
@@ -815,8 +739,7 @@ Future<void> _exportAllOrSelected() async {
               title: const Text('Help'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(
-                    context, MaterialPageRoute(builder: (_) => HelpScreen()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => HelpScreen()));
               },
             ),
             ListTile(
@@ -824,8 +747,7 @@ Future<void> _exportAllOrSelected() async {
               title: const Text('Trash'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(
-                    context, MaterialPageRoute(builder: (_) => TrashScreen()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => TrashScreen()));
               },
             ),
             ListTile(
@@ -833,10 +755,7 @@ Future<void> _exportAllOrSelected() async {
               title: const Text('About'),
               onTap: () {
                 Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => AboutScreen()),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (_) => AboutScreen()),);
               },
             ),
           ],
@@ -854,17 +773,14 @@ Future<void> _exportAllOrSelected() async {
           }
 
           if (visibleIndices.isEmpty)
-            return const Center(
-                child: Text('No notes. Use New Note to create or import one.'));
+            return const Center(child: Text('No notes. Use New Note to create or import one.'));
 
           return ReorderableListView.builder(
             onReorder: (oldIdx, newIdx) {
               final actualOld = visibleIndices[oldIdx];
               int actualNew;
-              if (newIdx >= visibleIndices.length)
-                actualNew = visibleIndices.last + 1;
-              else
-                actualNew = visibleIndices[newIdx];
+              if (newIdx >= visibleIndices.length) actualNew = visibleIndices.last + 1;
+              else actualNew = visibleIndices[newIdx];
               _onReorder(actualOld, actualNew);
             },
             itemCount: visibleIndices.length,
