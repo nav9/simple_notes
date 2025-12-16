@@ -36,6 +36,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
     notesBox = Hive.box<Map>('notesBox');
   }
 
+bool _contentLooksEncrypted(String content) {
+  return content.startsWith('[ENCRYPTED]');
+}
+
 bool get _hasAnyNotes {
   for (final n in notesBox.values) {
     if (!(n['isTrashed'] ?? false)) return true;
@@ -507,7 +511,9 @@ Future<void> _exportAllOrSelected() async {
     final isTrashed = note['isTrashed'] ?? false;
     if (isTrashed) return SizedBox.shrink();
 
-    final isEncrypted = note['isEncrypted'] ?? false;
+    final content = note['content'] as String;
+    final isEncrypted = (note['isEncrypted'] ?? false) || _contentLooksEncrypted(content);
+
     final title = (note['title'] as String?)?.trim();
     String displayTitle;
     String displaySubtitle = '';
@@ -519,8 +525,8 @@ Future<void> _exportAllOrSelected() async {
         displaySubtitle = _singleLineSnippet(content);
       } else {
         final sessionPw = _session.getNotePassword(key);
-        if (sessionPw != null && sessionPw.isNotEmpty) displaySubtitle = 'Decrypted';
-        else displaySubtitle = '🔒 Encrypted';
+        if (sessionPw != null && sessionPw.isNotEmpty) {displaySubtitle = 'Decrypted';}
+        else {displaySubtitle = '🔒 Encrypted';}
       }
     } else {
       if (isEncrypted) {
@@ -544,15 +550,13 @@ Future<void> _exportAllOrSelected() async {
           ? Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(isDecryptedInSession ? Icons.lock_open : Icons.lock),
               if (isDecryptedInSession) const SizedBox(width: 6),
-              if (isDecryptedInSession)
-                const Text('Decrypted', style: TextStyle(color: Colors.greenAccent))
+              if (isDecryptedInSession) const Text('Decrypted', style: TextStyle(color: Colors.lightBlue))
             ])
           : null,
       onTap: () {
         final content = note['content'] as String;
         final initialIsEncrypted = (note['isEncrypted'] ?? false) as bool;
-        Navigator.push(
-          context,
+        Navigator.push(context,
           MaterialPageRoute(
               builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
         ).then((_) {if (mounted) setState(() {});});

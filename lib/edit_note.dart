@@ -191,19 +191,12 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   Future<void> _saveNote({bool popAfterSave = false}) async {
     try {
       final content = _textController.text;
-      final titleText = _titleController.text.trim().isEmpty
-          ? null
-          : _titleController.text.trim();
-      final sessionPw = widget.noteKey != null
-          ? _session.getNotePassword(widget.noteKey)
-          : _session.sessionPassword;
-      final shouldEncryptOnDisk =
-          sessionPw != null && sessionPw.trim().isNotEmpty;
+      final titleText = _titleController.text.trim().isEmpty ? null : _titleController.text.trim();
+      final sessionPw = widget.noteKey != null ? _session.getNotePassword(widget.noteKey) : _session.sessionPassword;
+      final shouldEncryptOnDisk = sessionPw != null && sessionPw.trim().isNotEmpty;
 
       final newNote = {
-        'content': shouldEncryptOnDisk
-            ? EncryptionService.encryptText(content, sessionPw!)
-            : content,
+        'content': shouldEncryptOnDisk ? EncryptionService.encryptText(content, sessionPw!) : content,
         'isEncrypted': shouldEncryptOnDisk,
         'title': titleText,
         'isTrashed': false,
@@ -219,12 +212,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       }
 
       if (shouldEncryptOnDisk) {
-        if (widget.noteKey != null)
-          _session.storeNotePassword(widget.noteKey, sessionPw!);
-        else
-          _session.sessionPassword = sessionPw!;
+        if (widget.noteKey != null) {_session.storeNotePassword(widget.noteKey, sessionPw!);}
+        else {_session.sessionPassword = sessionPw!;}
       } else {
-        if (widget.noteKey != null) _session.clearNotePassword(widget.noteKey);
+        if (widget.noteKey != null) {_session.clearNotePassword(widget.noteKey);}
       }
 
       _originalTextSnapshot = content;
@@ -232,14 +223,12 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saved')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved')));
       }
 
       if (popAfterSave && mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
     }
   }
 
@@ -343,52 +332,27 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           : _session.sessionPassword;
 
       if (pw == null || pw.isEmpty) {
-        final entered = await showPasswordDialog(
-          context,
-          "Set password to encrypt note",
-          true,
-        );
+        final entered = await showPasswordDialog(context, "Set password to encrypt note", true,);
         if (entered == null || entered.isEmpty) return;
         pw = entered;
 
-        if (widget.noteKey != null) {
-          _session.storeNotePassword(widget.noteKey, pw);
-        } else {
-          _session.sessionPassword = pw;
-        }
+        if (widget.noteKey != null) {_session.storeNotePassword(widget.noteKey, pw);} else {_session.sessionPassword = pw;}
       }
 
-      final encryptedText = EncryptionService.encryptText(
-        _textController.text,
-        pw!,
-      );
+      final encryptedText = EncryptionService.encryptText(_textController.text,pw!,);
 
-      final Map newNote = {
-        'content': encryptedText,
-        'isEncrypted': true,
-        'title': _titleController.text.trim().isEmpty
-            ? null
-            : _titleController.text.trim(),
-        'isTrashed': false,
-      };
+      final Map newNote = {'content': encryptedText,'isEncrypted': true, 'title': _titleController.text.trim().isEmpty ? null : _titleController.text.trim(), 'isTrashed': false,};
 
-      if (widget.index != null) {
-        await _notesBox.putAt(widget.index!, newNote);
-      } else {
+      if (widget.index != null) {await _notesBox.putAt(widget.index!, newNote);} 
+      else {
         final List<Map> temp = [Map<String, dynamic>.from(newNote)];
-        temp.addAll(
-          _notesBox.values.map((e) => Map<String, dynamic>.from(e)),
-        );
+        temp.addAll(_notesBox.values.map((e) => Map<String, dynamic>.from(e)),);
         await _notesBox.clear();
         await _notesBox.addAll(temp);
       }
 
       // Clear password from session
-      if (widget.noteKey != null) {
-        _session.clearNotePassword(widget.noteKey);
-      } else {
-        _session.sessionPassword = null;
-      }
+      if (widget.noteKey != null) {_session.clearNotePassword(widget.noteKey);} else {_session.sessionPassword = null;}
 
       setState(() {
         _textController.text = encryptedText;
@@ -398,18 +362,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Note encrypted. Password cleared from session; re-enter to decrypt later.',
-            ),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Note encrypted. Password cleared from session; re-enter to decrypt later.',),),);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Encryption failed: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Encryption failed: $e')),);
     }
   }
 
@@ -459,14 +415,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final pos = range.start;
       final text = _textController.text;
-      final before =
-          text.substring(0, pos).split('\n').length; // approx line number
+      final before = text.substring(0, pos).split('\n').length; // approx line number
       final offset = (before - 1) * 22.0; // approx line height
-      _scrollController.animateTo(
-        offset,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
+      _scrollController.animateTo(offset, duration: const Duration(milliseconds: 250), curve: Curves.easeInOut,);
     });
   }
 
@@ -474,16 +425,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     final result = await showModalBottomSheet<SearchReplaceResult>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => SearchReplaceSheet(
-        controller: _textController,
-        highlightNotifier: _highlights,
-        currentMatchNotifier: _currentMatchIndex,
-      ),
+      builder: (_) => SearchReplaceSheet(controller: _textController, highlightNotifier: _highlights,currentMatchNotifier: _currentMatchIndex,),
     );
 
-    if (result != null && result.jumpTo != null) {
-      _scrollToRange(result.jumpTo!);
-    }
+    if (result != null && result.jumpTo != null) {_scrollToRange(result.jumpTo!);}
   }
 
   // Build highlighted text behind transparent editor
@@ -507,40 +452,24 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
         for (int i = 0; i < ranges.length; i++) {
           final r = ranges[i];
-          if (r.start > cursor) {
-            spans.add(TextSpan(text: text.substring(cursor, r.start)));
-          }
+          if (r.start > cursor) {spans.add(TextSpan(text: text.substring(cursor, r.start)));}
 
           final isCurrentMatch = i == _currentMatchIndex.value;
 
-          spans.add(TextSpan(
-            text: text.substring(r.start, r.end),
-            style: TextStyle(
-              backgroundColor:
-                  isCurrentMatch ? Colors.orange : const Color(0xFF4444AA),
-              color: Colors.white,
-            ),
-          ));
+          spans.add(TextSpan(text: text.substring(r.start, r.end), style: TextStyle(backgroundColor: isCurrentMatch ? Colors.orange : const Color(0xFF4444AA), color: Colors.white,),));
           cursor = r.end;
         }
 
-        if (cursor < text.length) {
-          spans.add(TextSpan(text: text.substring(cursor)));
-        }
+        if (cursor < text.length) {spans.add(TextSpan(text: text.substring(cursor)));}
 
-        return Text.rich(
-          TextSpan(children: spans),
-          softWrap: true,
-          style: const TextStyle(fontSize: 16, height: 1.4),
-        );
+        return Text.rich(TextSpan(children: spans), softWrap: true, style: const TextStyle(fontSize: 16, height: 1.4),);
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canInsertTime =
-        !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
+    final canInsertTime = !_isReadOnlyEncrypted && (_isEditing || _lastSelection != null);
 
     return RawKeyboardListener(
       focusNode: FocusNode(),
@@ -582,9 +511,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                   child: Listener(
                     onPointerDown: (_) {
                       // allow editor pointer events only when selecting text
-                      setState(() {
-                        _ignorePointerForEditorField = false;
-                      });
+                      setState(() {_ignorePointerForEditorField = false;});
                     },
                     child: TextField(
                       controller: _textController,
@@ -595,15 +522,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                       maxLines: null,
                       expands: true, // Fills the Expanded parent
                       textAlignVertical: TextAlignVertical.top,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: 'Enter your note',
-                      ),
+                      decoration: const InputDecoration(border: OutlineInputBorder(),hintText: 'Enter your note',),
                       // CHANGE 7: Restore normal styles and physics
-                      style: const TextStyle(
-                          fontSize: 16,
-                          height: 1.4,
-                          color: Colors.black // Ensure text is visible
+                      style: const TextStyle(fontSize: 16,height: 1.4,color: Colors.black // Ensure text is visible
                           ),
                       cursorColor: Colors.blue,
                       // Use normal physics or AlwaysScrollableScrollPhysics
@@ -637,14 +558,12 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     if (_isReadOnlyEncrypted) return;
     final sel = _textController.selection;
     final now = DateTime.now();
-    final timeStr =
-        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ";
+    final timeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ";
 
     final text = _textController.text;
     final newText = text.replaceRange(sel.start, sel.end, timeStr);
     _textController.text = newText;
-    _textController.selection =
-        TextSelection.collapsed(offset: sel.start + timeStr.length);
+    _textController.selection = TextSelection.collapsed(offset: sel.start + timeStr.length);
   }
 }
 
@@ -660,20 +579,13 @@ class HighlightTextEditingController extends TextEditingController {
 
   HighlightTextEditingController({
     required String text,
-    this.baseStyle =
-        const TextStyle(fontSize: 16, height: 1.4, color: Colors.black),
+    this.baseStyle = const TextStyle(fontSize: 16, height: 1.4, color: Colors.black),
   }) : super(text: text);
 
   @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
+  TextSpan buildTextSpan({required BuildContext context,TextStyle? style,required bool withComposing,}) {
     // If no highlights, just return standard text
-    if (highlights.isEmpty) {
-      return TextSpan(text: text, style: baseStyle);
-    }
+    if (highlights.isEmpty) {return TextSpan(text: text, style: baseStyle);}
 
     // Sort ranges just to be safe
     final sortedRanges = List<TextRange>.from(highlights)
@@ -687,23 +599,14 @@ class HighlightTextEditingController extends TextEditingController {
 
       // Add non-highlighted text before the match
       if (range.start > cursor) {
-        spans.add(TextSpan(
-          text: text.substring(cursor, range.start),
-          style: baseStyle,
-        ));
+        spans.add(TextSpan(text: text.substring(cursor, range.start),style: baseStyle,));
       }
 
       // Add the highlighted match
       // Ensure we don't crash if range is out of bounds (safety check)
       if (range.end <= text.length) {
         final isCurrent = (i == currentMatchIndex);
-        spans.add(TextSpan(
-          text: text.substring(range.start, range.end),
-          style: baseStyle.copyWith(
-            backgroundColor: isCurrent ? currentMatchColor : matchColor,
-            color: Colors.white,
-          ),
-        ));
+        spans.add(TextSpan(text: text.substring(range.start, range.end),style: baseStyle.copyWith(backgroundColor: isCurrent ? currentMatchColor : matchColor,color: Colors.white,),));
       }
 
       cursor = range.end;
@@ -711,10 +614,7 @@ class HighlightTextEditingController extends TextEditingController {
 
     // Add remaining text
     if (cursor < text.length) {
-      spans.add(TextSpan(
-        text: text.substring(cursor),
-        style: baseStyle,
-      ));
+      spans.add(TextSpan(text: text.substring(cursor),style: baseStyle,));
     }
 
     return TextSpan(style: baseStyle, children: spans);
