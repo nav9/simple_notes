@@ -268,16 +268,25 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   Future<void> _copyToClipboard() async {
     try {
-      await Clipboard.setData(ClipboardData(text: _textController.text));
+      final title = _titleController.text.trim();
+      final content = _textController.text;
+      final buffer = StringBuffer();
+      if (title.isNotEmpty) {//join the title and content
+        buffer.writeln(title);
+        //buffer.writeln();//empty line
+      }
+      buffer.write(content);  
+      final textToCopy = buffer.toString();
+      if (textToCopy.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nothing to copy')),);
+        return;
+      }    
+      await Clipboard.setData(ClipboardData(text: textToCopy));
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Copied to clipboard')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied to clipboard')),);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Copy failed: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Copy failed: $e')),);
     }
   }
 
