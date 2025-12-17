@@ -88,71 +88,78 @@ bool get _hasDecryptedNotes {
     }
   }
 
-Future<String?> _pickExportDirectory() async {
-  final settingsBox = Hive.box('settings');
+  Future<String?> _pickExportDirectory() async {
+    final settingsBox = Hive.box('settings');
 
-  // Ask user
-  final String? dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder',);
+    // Ask user
+    final String? dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder',);
 
-  if (dir == null) return null;
+    if (dir == null) return null;
 
-  // Save as default?
-  final saveDefault = await showDialog<bool>(
-    context: context,
-    builder: (_) => AlertDialog(
-      title: const Text('Set as default?'),
-      content: const Text('Use this folder as the default export location?',),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No'),),
-        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes'),),
-      ],
-    ),
-  );
+    // Save as default?
+    final saveDefault = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Set as default?'),
+        content: const Text('Use this folder as the default export location?',),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No'),),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes'),),
+        ],
+      ),
+    );
 
-  if (saveDefault == true) {settingsBox.put('exportDir', dir);}
+    if (saveDefault == true) {settingsBox.put('exportDir', dir);}
 
-  return dir;
-}
-
-Future<Directory> _getDefaultExportDirectory() async {
-  if (Platform.isAndroid) {
-    final dir = await getExternalStorageDirectory();
-    final exportDir = Directory('${dir!.path}/exports');
-    await exportDir.create(recursive: true);
-    return exportDir;
-  }
-  if (Platform.isLinux) {
-    final dir = await getApplicationDocumentsDirectory();
-    final exportDir = Directory('${dir.path}/exports');
-    await exportDir.create(recursive: true);
-    return exportDir;
-  }
-  final dir = await getApplicationDocumentsDirectory();
-  return dir;  
-}
-
-Future<Directory> resolveFolderSetting(String key) async {
-  final settings = Hive.box('settings');
-  final saved = settings.get(key);
-
-  if (saved is String && saved.isNotEmpty) {
-    final dir = Directory(saved);
-    if (await dir.exists()) return dir;
+    return dir;
   }
 
-  // fallback
-  final fallback = await _getDefaultExportDirectory();
-  settings.put(key, fallback.path);
-  return fallback;
-}
+  Future<Directory> _getDefaultExportDirectory() async {
+    if (Platform.isAndroid) {
+      // Android/data/<package>/files
+      final dir = await getExternalStorageDirectory();
+      return dir!;
+    }
 
+    if (Platform.isLinux) {
+      final dir = await getApplicationDocumentsDirectory();
+      return dir;
+    }
 
-Future<bool> _ensureStoragePermission() async {
-  if (!Platform.isAndroid) return true;
+    return await getApplicationDocumentsDirectory();
+  }
 
-  final status = await Permission.manageExternalStorage.request();
-  return status.isGranted;
-}
+  Future<Directory> resolveFolderSetting(String key) async {
+    final settings = Hive.box('settings');
+    final saved = settings.get(key);
+
+    // 1️⃣ Try saved path
+    if (saved is String && saved.isNotEmpty) {
+      final dir = Directory(saved);
+      if (await _canWriteToDirectory(dir)) {return dir;}
+    }
+
+    // 2️⃣ Fallback to app-specific directory
+    final fallback = await _getDefaultExportDirectory();
+    settings.put(key, fallback.path);
+    return fallback;
+  }
+
+  Future<bool> _ensureStoragePermission() async {
+    if (!Platform.isAndroid) return true;
+    final status = await Permission.manageExternalStorage.request();
+    return status.isGranted;
+  }
+
+  Future<bool> _canWriteToDirectory(Directory dir) async {
+    try {
+      if (!await dir.exists()) return false;
+      final testFile = File(p.join(dir.path, '.write_test_${DateTime.now().millisecondsSinceEpoch}'),);
+      await testFile.writeAsString('ok');
+      await testFile.delete();
+      return true;
+    } catch (_) {return false;}
+  }
 
   // Move selected notes to trash
   Future<void> _moveSelectedToTrash() async {
@@ -258,23 +265,31 @@ Future<bool> _ensureStoragePermission() async {
     }
   }
 
-Future<Directory> _resolveExportDirectory() async {
-  final settings = Hive.box('settings');
+  Future<Directory> _resolveExportDirectory() async {
+    final settings = Hive.box('settings');
 
-  // Always start from resolved folder
-  final baseDir = await resolveFolderSetting('exportDir');
-  final picked = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder', initialDirectory: baseDir.path,);
+    // Start from last known good folder
+    final baseDir = await resolveFolderSetting('exportDir');
 
-  if (picked != null) {
-    settings.put('exportDir', picked);
-    final dir = Directory(picked);
-    await dir.create(recursive: true);
-    return dir;
+    final pickedPath = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select export folder',
+      initialDirectory: baseDir.path,
+    );
+
+    if (pickedPath != null) {
+      final pickedDir = Directory(pickedPath);
+
+      if (await _canWriteToDirectory(pickedDir)) {
+        settings.put('exportDir', pickedDir.path);
+        return pickedDir;
+      }
+    }
+
+    // If user-picked folder is not writable → fallback
+    final fallback = await _getDefaultExportDirectory();
+    settings.put('exportDir', fallback.path);
+    return fallback;
   }
-
-  return baseDir;
-}
-
 
 void _showExportSuccess(String path) {
   showDialog(
@@ -316,65 +331,92 @@ void _showExportSuccess(String path) {
   }
 
   // Import notes (txt files) — title used as filename base (without extension)
-Future<void> _importNotes() async {
-  try {
-    final settings = Hive.box('settings');
-    final defaultDir = (await resolveFolderSetting('importDir')).path;
+  Future<void> _importNotes() async {
+    try {
+      final settings = Hive.box('settings');
+      final defaultDir = (await resolveFolderSetting('importDir')).path;
 
-    final res = await FilePicker.platform.pickFiles(allowMultiple: true, initialDirectory: defaultDir, type: FileType.custom,allowedExtensions: ['txt'],);
+      final res = await FilePicker.platform.pickFiles(allowMultiple: true, initialDirectory: defaultDir, type: FileType.custom,allowedExtensions: ['txt'],);
 
-    if (res == null) return;
+      if (res == null) return;
 
-    // Save folder user actually used
-    final usedPath = p.dirname(res.files.first.path!);
-    settings.put('importDir', usedPath);
+      // Save folder user actually used
+      final usedPath = p.dirname(res.files.first.path!);
+      settings.put('importDir', usedPath);
 
-    for (final f in res.files) {
-      final content = await File(f.path!).readAsString();
-      final isEncrypted = content.startsWith('[ENCRYPTED]');
-      final title = p.basenameWithoutExtension(f.path!);
+      for (final f in res.files) {
+        final content = await File(f.path!).readAsString();
+        final isEncrypted = content.startsWith('[ENCRYPTED]');
+        final title = p.basenameWithoutExtension(f.path!);
 
-      await notesBox.add({'content': content, 'isEncrypted': isEncrypted, 'title': title, 'isTrashed': false,});
+        await notesBox.add({'content': content, 'isEncrypted': isEncrypted, 'title': title, 'isTrashed': false,});
+      }
+
+      if (mounted) setState(() {});
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
     }
-
-    if (mounted) setState(() {});
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e')));
   }
-}
 
   // Export selected notes if any selected, else export all notes to folder; uses title as filename if present, otherwise unique ordinal
-Future<void> _exportAllOrSelected() async {
-  try {
-    if (!await _ensureStoragePermission()) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Storage permission denied')),);
-      return;
+  Future<void> _exportAllOrSelected() async {
+    try {
+      if (!await _ensureStoragePermission()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Storage permission denied')),
+        );
+        return;
+      }
+
+      Directory exportDir = await _resolveExportDirectory();
+      bool success = false;
+
+      try {
+        success = await _writeNotesToDirectory(exportDir);
+      } catch (_) {
+        success = false;
+      }
+
+      if (!success) {
+        // 🔴 Fallback to Android/data
+        exportDir = await _getDefaultExportDirectory();
+        Hive.box('settings').put('exportDir', exportDir.path);
+        await _writeNotesToDirectory(exportDir);
+      }
+
+      _showExportSuccess(exportDir.path);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e')),
+      );
     }
+  }
 
-    final exportDir = await _resolveExportDirectory();
-
-    final keysToExport = _selectedKeys.isNotEmpty ? List<dynamic>.from(_selectedKeys) : List<dynamic>.from(notesBox.keys);
+  Future<bool> _writeNotesToDirectory(Directory dir) async {
+    final keysToExport = _selectedKeys.isNotEmpty
+        ? List<dynamic>.from(_selectedKeys)
+        : List<dynamic>.from(notesBox.keys);
 
     int ordinal = 1;
+
     for (final key in keysToExport) {
       final n = notesBox.get(key);
       if (n == null || (n['isTrashed'] ?? false)) continue;
 
       final title = (n['title'] as String?)?.trim();
-      String filename = (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
+      String filename =
+          (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
 
-      if (!filename.toLowerCase().endsWith('.txt')) {filename = '$filename.txt';}
+      if (!filename.toLowerCase().endsWith('.txt')) {
+        filename = '$filename.txt';
+      }
 
-      final filePath = p.join(exportDir.path, filename);
-      await File(filePath).writeAsString(n['content']);
+      final file = File(p.join(dir.path, filename));
+      await file.writeAsString(n['content']);
     }
 
-    _showExportSuccess(exportDir.path);
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    return true;
   }
-}
-
 
   Future<void> _mergeSelectedNotes() async {
     try {
