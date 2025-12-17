@@ -116,16 +116,17 @@ bool get _hasDecryptedNotes {
     return dir.path;
   }
 
-  Future<Directory> _getDefaultExportDirectory() async {
+  Future<Directory> _getSafeBaseDirectory() async {
     if (Platform.isAndroid) {
-      // Android/data/<package>/files
       final dir = await getExternalStorageDirectory();
-      return dir!;
+      if (dir == null) {
+        throw Exception('Cannot access app storage');
+      }
+      return dir; // Android/data/<pkg>/files
     }
 
     if (Platform.isLinux) {
-      final dir = await getApplicationDocumentsDirectory();
-      return dir;
+      return await getApplicationDocumentsDirectory();
     }
 
     return await getApplicationDocumentsDirectory();
@@ -133,24 +134,18 @@ bool get _hasDecryptedNotes {
 
   Future<Directory> resolveFolderSetting(String key) async {
     final settings = Hive.box('settings');
-    final saved = settings.get(key);
 
-    // 1️⃣ Try saved path
-    if (saved is String && saved.isNotEmpty) {
+    final saved = settings.get(key);
+    if (saved is String) {
       final dir = Directory(saved);
-      if (await _canWriteToDirectory(dir)) {return dir;}
+      if (await dir.exists()) {
+        return dir;
+      }
     }
 
-    // 2️⃣ Fallback to app-specific directory
-    final fallback = await _getDefaultExportDirectory();
+    final fallback = await _getSafeBaseDirectory();
     settings.put(key, fallback.path);
     return fallback;
-  }
-
-  Future<bool> _ensureStoragePermission() async {
-    if (!Platform.isAndroid) return true;
-    final status = await Permission.manageExternalStorage.request();
-    return status.isGranted;
   }
 
   Future<bool> _canWriteToDirectory(Directory dir) async {
@@ -265,39 +260,19 @@ bool get _hasDecryptedNotes {
     } catch (e) {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));}
   }
 
-Future<Directory> _resolveExportDirectory() async {
-  final settings = Hive.box('settings');
+  Future<void> _chooseExportDirectory() async {
+    final settings = Hive.box('settings');
+    final baseDir = await resolveFolderSetting('exportDir');
 
-  // Last known good directory
-  final baseDir = await resolveFolderSetting('exportDir');
+    final picked = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Select export folder',
+      initialDirectory: baseDir.path,
+    );
 
-  final pickedPath = await FilePicker.platform.getDirectoryPath(
-    dialogTitle: 'Select export folder',
-    initialDirectory: baseDir.path,
-  );
+    if (picked == null) return;
 
-  // 🚫 User pressed Esc / Cancel
-  if (pickedPath == null) {
-    return baseDir;
+    settings.put('exportDir', picked);
   }
-
-  // 🚫 Picker returned the same folder without confirmation
-  if (p.equals(pickedPath, baseDir.path)) {
-    return baseDir;
-  }
-
-  final pickedDir = Directory(pickedPath);
-
-  // 🚫 Not writable → ignore
-  if (!await _canWriteToDirectory(pickedDir)) {
-    return baseDir;
-  }
-
-  // ✅ Explicitly confirmed + writable
-  settings.put('exportDir', pickedDir.path);
-  return pickedDir;
-}
-
 
 void _showExportSuccess(String path) {
   showDialog(
@@ -362,37 +337,24 @@ void _showExportSuccess(String path) {
 
   // Export selected notes if any selected, else export all notes to folder; uses title as filename if present, otherwise unique ordinal
   Future<void> _exportAllOrSelected() async {
+    Directory exportDir;
+
     try {
-      if (!await _ensureStoragePermission()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Storage permission denied')),
-        );
-        return;
-      }
-
-      Directory exportDir = await _resolveExportDirectory();
-      bool success = false;
-
-      try {
-        success = await _writeNotesToDirectory(exportDir);
-      } catch (_) {
-        success = false;
-      }
-
-      if (!success) {
-        // 🔴 Fallback to Android/data
-        exportDir = await _getDefaultExportDirectory();
-        Hive.box('settings').put('exportDir', exportDir.path);
-        await _writeNotesToDirectory(exportDir);
-      }
-
+      exportDir = await resolveFolderSetting('exportDir');
+      await _writeNotesToDirectory(exportDir);
       _showExportSuccess(exportDir.path);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
+      return;
+    } catch (_) {
+      // ignore
     }
+
+    // Absolute fallback
+    final fallback = await _getSafeBaseDirectory();
+    Hive.box('settings').put('exportDir', fallback.path);
+    await _writeNotesToDirectory(fallback);
+    _showExportSuccess(fallback.path);
   }
+
 
   Future<bool> _writeNotesToDirectory(Directory dir) async {
     final keysToExport = _selectedKeys.isNotEmpty
@@ -608,14 +570,14 @@ void _showExportSuccess(String path) {
     final multipleSelected = _selectedKeys.length > 1;
 
     return [
-      if (_hasAnyNotes) const PopupMenuItem(value: 'select_all',child: ListTile(leading: Icon(Icons.select_all), title: Text('Select All'),),),
+      if (_hasAnyNotes) const PopupMenuItem(value: 'select_all',child: ListTile(leading: Icon(Icons.select_all), title: Text('Select all'),),),
       if (hasSelection) ...[        
-        const PopupMenuItem(value: 'select_none',child: ListTile(leading: Icon(Icons.clear), title: Text('Select None'),),),
+        const PopupMenuItem(value: 'select_none',child: ListTile(leading: Icon(Icons.clear), title: Text('Select none'),),),
         const PopupMenuDivider(),
-        const PopupMenuItem(value: 'duplicate',child: ListTile(leading: Icon(Icons.control_point_duplicate),title: Text('Duplicate'),),),
-        const PopupMenuItem(value: 'export_selected',child: ListTile(leading: Icon(Icons.download_outlined),title: Text('Export'),),),
-        if (multipleSelected) const PopupMenuItem(value: 'merge',child: ListTile(leading: Icon(Icons.merge_type), title: Text('Merge'),),),
-        const PopupMenuItem(value: 'trash',child: ListTile(leading: Icon(Icons.delete), title: Text('Delete'),),),
+        const PopupMenuItem(value: 'duplicate',child: ListTile(leading: Icon(Icons.control_point_duplicate),title: Text('Duplicate selected Notes'),),),
+        const PopupMenuItem(value: 'export_selected',child: ListTile(leading: Icon(Icons.download_outlined),title: Text('Export to storage'),),),
+        if (multipleSelected) const PopupMenuItem(value: 'merge',child: ListTile(leading: Icon(Icons.merge_type), title: Text('Merge selected Notes'),),),
+        const PopupMenuItem(value: 'trash',child: ListTile(leading: Icon(Icons.delete), title: Text('Move to Trash'),),),
         const PopupMenuDivider(),
       ],
       if (_hasDecryptedNotes) const PopupMenuItem(value: 'encrypt_all',child: ListTile(leading: Icon(Icons.lock),title: Text('Encrypt all decrypted notes'),),),
