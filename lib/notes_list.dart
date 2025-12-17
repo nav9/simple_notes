@@ -41,18 +41,14 @@ bool _contentLooksEncrypted(String content) {
 }
 
 bool get _hasAnyNotes {
-  for (final n in notesBox.values) {
-    if (!(n['isTrashed'] ?? false)) return true;
-  }
+  for (final n in notesBox.values) {if (!(n['isTrashed'] ?? false)) return true;}
   return false;
 }
 
 bool get _hasDecryptedNotes {
   for (int i = 0; i < notesBox.length; i++) {
     final key = notesBox.keyAt(i);
-    if (_session.getNotePassword(key)?.isNotEmpty == true) {
-      return true;
-    }
+    if (_session.getNotePassword(key)?.isNotEmpty == true) {return true;}
   }
   return false;
 }
@@ -90,28 +86,34 @@ bool get _hasDecryptedNotes {
 
   Future<String?> _pickExportDirectory() async {
     final settingsBox = Hive.box('settings');
+    final baseDir = await resolveFolderSetting('exportDir');
 
-    // Ask user
-    final String? dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder',);
+    final pickedPath = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Select export folder', initialDirectory: baseDir.path,);
 
-    if (dir == null) return null;
+    // Esc / Cancel
+    if (pickedPath == null) return null;
 
-    // Save as default?
+    // Same path → not a real confirmation
+    if (p.equals(pickedPath, baseDir.path)) return null;
+
+    final dir = Directory(pickedPath);
+    if (!await _canWriteToDirectory(dir)) return null;
+
     final saveDefault = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Set as default?'),
-        content: const Text('Use this folder as the default export location?',),
+        content: const Text('Use this folder as the default export location?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No'),),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes'),),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Yes')),
         ],
       ),
     );
 
-    if (saveDefault == true) {settingsBox.put('exportDir', dir);}
+    if (saveDefault == true) {settingsBox.put('exportDir', dir.path);}
 
-    return dir;
+    return dir.path;
   }
 
   Future<Directory> _getDefaultExportDirectory() async {
@@ -260,36 +262,42 @@ bool get _hasDecryptedNotes {
       _selectedKeys.clear();
       if (mounted) setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Duplicated selected notes')));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));
-    }
+    } catch (e) {ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Duplicate failed: $e')));}
   }
 
-  Future<Directory> _resolveExportDirectory() async {
-    final settings = Hive.box('settings');
+Future<Directory> _resolveExportDirectory() async {
+  final settings = Hive.box('settings');
 
-    // Start from last known good folder
-    final baseDir = await resolveFolderSetting('exportDir');
+  // Last known good directory
+  final baseDir = await resolveFolderSetting('exportDir');
 
-    final pickedPath = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Select export folder',
-      initialDirectory: baseDir.path,
-    );
+  final pickedPath = await FilePicker.platform.getDirectoryPath(
+    dialogTitle: 'Select export folder',
+    initialDirectory: baseDir.path,
+  );
 
-    if (pickedPath != null) {
-      final pickedDir = Directory(pickedPath);
-
-      if (await _canWriteToDirectory(pickedDir)) {
-        settings.put('exportDir', pickedDir.path);
-        return pickedDir;
-      }
-    }
-
-    // If user-picked folder is not writable → fallback
-    final fallback = await _getDefaultExportDirectory();
-    settings.put('exportDir', fallback.path);
-    return fallback;
+  // 🚫 User pressed Esc / Cancel
+  if (pickedPath == null) {
+    return baseDir;
   }
+
+  // 🚫 Picker returned the same folder without confirmation
+  if (p.equals(pickedPath, baseDir.path)) {
+    return baseDir;
+  }
+
+  final pickedDir = Directory(pickedPath);
+
+  // 🚫 Not writable → ignore
+  if (!await _canWriteToDirectory(pickedDir)) {
+    return baseDir;
+  }
+
+  // ✅ Explicitly confirmed + writable
+  settings.put('exportDir', pickedDir.path);
+  return pickedDir;
+}
+
 
 void _showExportSuccess(String path) {
   showDialog(
@@ -299,13 +307,7 @@ void _showExportSuccess(String path) {
       content: Text('Saved to:\n$path'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'),),
-        TextButton(
-          onPressed: () {
-            if (!Platform.isLinux) {OpenFilex.open(path);}
-            Navigator.pop(context);
-          },
-          child: const Text('Open Folder'),
-        ),
+        // TextButton(onPressed: () {if (!Platform.isLinux) {OpenFilex.open(path);}Navigator.pop(context);},child: const Text('Open Folder'),),
       ],
     ),
   );
