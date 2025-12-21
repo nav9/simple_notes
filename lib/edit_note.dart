@@ -147,9 +147,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       case 'copy':
         _copyToClipboard();
         break;
-      case 'encrypt':
-        _isReadOnlyEncrypted ? _decryptInEditor() : _encryptInEditor();
-        break;
+      // case 'encrypt':
+      //   _isReadOnlyEncrypted ? _decryptInEditor() : _encryptInEditor();
+      //   break;
     }
   }
 
@@ -402,6 +402,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           appBar: AppBar(
             title: Text(_titleController.text.trim().isNotEmpty ? _titleController.text.trim() : (widget.initialIsEncrypted ? 'Encrypted Note' : 'Edit Note')),
             actions: [
+              IconButton(
+                icon: Icon(_isReadOnlyEncrypted ? Icons.lock_open : Icons.lock_outline, color: Colors.lightBlue,),
+                onPressed: () => _isReadOnlyEncrypted ? _decryptInEditor() : _encryptInEditor(),
+                tooltip: _isReadOnlyEncrypted ? 'Decrypt' : 'Encrypt',),              
               IconButton(icon: const Icon(Icons.access_time, color: Colors.lightBlue), onPressed: canInsertTime ? _insertCurrentTime : null,),
               IconButton(icon: const Icon(Icons.save, color: Colors.lightBlue), onPressed: _isReadOnlyEncrypted ? null : () => _saveNote(popAfterSave: true),),
               PopupMenuButton<String>(
@@ -409,7 +413,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                 itemBuilder: (_) => [
                   if (_enableHighlighting) const PopupMenuItem(value: 'search', child: ListTile(leading: Icon(Icons.search), title: Text('Search'),),),                  
                   const PopupMenuItem(value: 'copy', child: ListTile(leading: Icon(Icons.content_copy), title: Text('Copy'),),),
-                  PopupMenuItem(value: 'encrypt', child: ListTile(leading: Icon(_isReadOnlyEncrypted ? Icons.lock_open : Icons.lock_outline), title: Text(_isReadOnlyEncrypted ? 'Decrypt' : 'Encrypt'),),),  
+                  //PopupMenuItem(value: 'encrypt', child: ListTile(leading: Icon(_isReadOnlyEncrypted ? Icons.lock_open : Icons.lock_outline), title: Text(_isReadOnlyEncrypted ? 'Decrypt' : 'Encrypt'),),),  
                   //const PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.file_download), title: Text('Export'),),),
                 ],
               ),
