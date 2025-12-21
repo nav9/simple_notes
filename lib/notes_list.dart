@@ -357,24 +357,15 @@ void _showExportSuccess(String path) {
 
 
   Future<bool> _writeNotesToDirectory(Directory dir) async {
-    final keysToExport = _selectedKeys.isNotEmpty
-        ? List<dynamic>.from(_selectedKeys)
-        : List<dynamic>.from(notesBox.keys);
-
+    final keysToExport = _selectedKeys.isNotEmpty ? List<dynamic>.from(_selectedKeys) : List<dynamic>.from(notesBox.keys);
     int ordinal = 1;
 
     for (final key in keysToExport) {
       final n = notesBox.get(key);
       if (n == null || (n['isTrashed'] ?? false)) continue;
-
       final title = (n['title'] as String?)?.trim();
-      String filename =
-          (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
-
-      if (!filename.toLowerCase().endsWith('.txt')) {
-        filename = '$filename.txt';
-      }
-
+      String filename = (title != null && title.isNotEmpty) ? title : 'note_${ordinal++}';
+      if (!filename.toLowerCase().endsWith('.txt')) {filename = '$filename.txt';}
       final file = File(p.join(dir.path, filename));
       await file.writeAsString(n['content']);
     }
@@ -492,8 +483,7 @@ void _showExportSuccess(String path) {
       leading: Checkbox(value: _selectedKeys.contains(key), onChanged: (_) => _toggleSelection(key),),
       title: Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: displaySubtitle.isNotEmpty ? Text(displaySubtitle, maxLines: 1, overflow: TextOverflow.ellipsis) : null,
-      trailing: isEncrypted
-          ? Row(mainAxisSize: MainAxisSize.min, children: [
+      trailing: isEncrypted ? Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(isDecryptedInSession ? Icons.lock_open : Icons.lock),
               if (isDecryptedInSession) const SizedBox(width: 6),
               if (isDecryptedInSession) const Text('Decrypted', style: TextStyle(color: Colors.lightBlue))
@@ -503,8 +493,8 @@ void _showExportSuccess(String path) {
         final content = note['content'] as String;
         final initialIsEncrypted = (note['isEncrypted'] ?? false) as bool;
         Navigator.push(context,
-          MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
-        ).then((_) {if (mounted) setState(() {});});
+                        MaterialPageRoute(builder: (_) => EditNoteScreen(index: index, noteKey: key, note: content, initialIsEncrypted: initialIsEncrypted)),
+                      ).then((_) {if (mounted) setState(() {});});
       },
     );
   }
@@ -516,9 +506,7 @@ void _showExportSuccess(String path) {
   }
 
   int _indexOfKey(dynamic key) {
-    for (int i = 0; i < notesBox.length; i++) {
-      if (notesBox.keyAt(i) == key) return i;
-    }
+    for (int i = 0; i < notesBox.length; i++) {if (notesBox.keyAt(i) == key) return i;}
     return -1;
   }
 
@@ -550,8 +538,7 @@ void _showExportSuccess(String path) {
       for (int i = 0; i < notesBox.length; i++) {
         final k = notesBox.keyAt(i);
         final pw = pwList[i];
-        if (pw != null && pw.isNotEmpty) _session.storeNotePassword(k, pw);
-        else _session.clearNotePassword(k);
+        if (pw != null && pw.isNotEmpty) {_session.storeNotePassword(k, pw);} else {_session.clearNotePassword(k);}
       }
 
       if (mounted) setState(() {});
@@ -565,15 +552,14 @@ void _showExportSuccess(String path) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => EditNoteScreen())).then((_) {if (mounted) setState(() {});});
   }
 
-  List<PopupMenuEntry<String>> _buildMainMenuItems(BuildContext context) {
+  List<PopupMenuEntry<String>> _buildMainMenuItems(BuildContext context) {    
     final hasSelection = _selectedKeys.isNotEmpty;
     final multipleSelected = _selectedKeys.length > 1;
 
     return [
-      if (_hasAnyNotes) const PopupMenuItem(value: 'select_all',child: ListTile(leading: Icon(Icons.select_all), title: Text('Select all'),),),
-      if (hasSelection) ...[        
-        const PopupMenuItem(value: 'select_none',child: ListTile(leading: Icon(Icons.clear), title: Text('Select none'),),),
-        const PopupMenuDivider(),
+      
+      if (hasSelection) ...[                
+        //const PopupMenuDivider(),
         const PopupMenuItem(value: 'duplicate',child: ListTile(leading: Icon(Icons.control_point_duplicate),title: Text('Duplicate selected Notes'),),),
         const PopupMenuItem(value: 'export_selected',child: ListTile(leading: Icon(Icons.download_outlined),title: Text('Export to storage'),),),
         if (multipleSelected) const PopupMenuItem(value: 'merge',child: ListTile(leading: Icon(Icons.merge_type), title: Text('Merge selected Notes'),),),
@@ -588,12 +574,12 @@ void _showExportSuccess(String path) {
 
   void _handleMenuAction(String action) {
     switch (action) {
-      case 'select_all':
-        _selectAll();
-        break;
-      case 'select_none':
-        _selectNone();
-        break;
+      // case 'select_all':
+      //   _selectAll();
+      //   break;
+      // case 'select_none':
+      //   _selectNone();
+      //   break;
       case 'duplicate':
         _duplicateSelected();
         break;
@@ -617,15 +603,15 @@ void _showExportSuccess(String path) {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) {    
+    final hasSelection = _selectedKeys.isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Simple Notes'),
         actions: [
-          IconButton(
-              icon: const Icon(Icons.add_circle, color: Colors.lightBlue),
-              tooltip: 'New Note',
-              onPressed: _createNewNote),
+          if (hasSelection) IconButton(icon: const Icon(Icons.clear, color: Colors.lightBlue), tooltip: 'Select none', onPressed: _selectNone),
+          IconButton(icon: const Icon(Icons.select_all, color: Colors.lightBlue), tooltip: 'Select all', onPressed: _selectAll),
+          IconButton(icon: const Icon(Icons.add_circle, color: Colors.lightBlue), tooltip: 'New Note', onPressed: _createNewNote),
           PopupMenuButton<String>(onSelected: _handleMenuAction, itemBuilder: _buildMainMenuItems,),
         ],
       ),
